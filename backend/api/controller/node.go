@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strings"
@@ -9,12 +10,21 @@ import (
 	"github.com/samber/lo"
 	"github.com/spf13/cast"
 	"go.uber.org/zap"
+	"golang.org/x/sync/errgroup"
 	"gorm.io/gorm"
 
 	"github.com/veops/oneterm/acl"
+	redis "github.com/veops/oneterm/cache"
+	"github.com/veops/oneterm/conf"
 	mysql "github.com/veops/oneterm/db"
 	"github.com/veops/oneterm/logger"
 	"github.com/veops/oneterm/model"
+	"github.com/veops/oneterm/util"
+)
+
+const (
+	kFmtAllNodes = "allNodes"
+	kFmtNodeIds  = "nodeIds-%d"
 )
 
 var (
@@ -30,7 +40,8 @@ var (
 //	@Success	200		{object}	HttpResponse
 //	@Router		/node [post]
 func (c *Controller) CreateNode(ctx *gin.Context) {
-	doCreate(ctx, false, &model.Node{}, "")
+	redis.RC.Del(ctx, kFmtAllNodes)
+	doCreate(ctx, true, &model.Node{}, conf.RESOURCE_NODE)
 }
 
 // DeleteNode godoc
@@ -40,7 +51,8 @@ func (c *Controller) CreateNode(ctx *gin.Context) {
 //	@Success	200	{object}	HttpResponse
 //	@Router		/node/:id [delete]
 func (c *Controller) DeleteNode(ctx *gin.Context) {
-	doDelete(ctx, false, &model.Node{}, nodeDcs...)
+	redis.RC.Del(ctx, kFmtAllNodes)
+	doDelete(ctx, true, &model.Node{}, conf.RESOURCE_NODE, nodeDcs...)
 }
 
 // UpdateNode godoc
@@ -51,7 +63,8 @@ func (c *Controller) DeleteNode(ctx *gin.Context) {
 //	@Success	200		{object}	HttpResponse
 //	@Router		/node/:id [put]
 func (c *Controller) UpdateNode(ctx *gin.Context) {
-	doUpdate(ctx, false, &model.Node{}, nodePreHooks...)
+	redis.RC.Del(ctx, kFmtAllNodes)
+	doUpdate(ctx, true, &model.Node{}, conf.RESOURCE_NODE, nodePreHooks...)
 }
 
 // GetNodes godoc
@@ -68,7 +81,11 @@ func (c *Controller) UpdateNode(ctx *gin.Context) {
 //	@Success	200				{object}	HttpResponse{data=ListData{list=[]model.Node}}
 //	@Router		/node [get]
 func (c *Controller) GetNodes(ctx *gin.Context) {
-	db := mysql.DB.Model(&model.Node{})
+	currentUser, _ := acl.GetSessionFromCtx(ctx)
+
+	info := cast.ToBool(ctx.Query("info"))
+
+	db := mysql.DB.Model(model.DefaultNode)
 
 	db = filterEqual(ctx, db, "id", "parent_id")
 	db = filterLike(ctx, db, "name")
@@ -77,7 +94,7 @@ func (c *Controller) GetNodes(ctx *gin.Context) {
 		db = db.Where("id IN ?", lo.Map(strings.Split(q, ","), func(s string, _ int) int { return cast.ToInt(s) }))
 	}
 	if id, ok := ctx.GetQuery("no_self_child"); ok {
-		ids, err := handleNoSelfChild(cast.ToInt(id))
+		ids, err := handleNoSelfChild(ctx, cast.ToInt(id))
 		if err != nil {
 			return
 		}
@@ -85,21 +102,30 @@ func (c *Controller) GetNodes(ctx *gin.Context) {
 	}
 
 	if id, ok := ctx.GetQuery("self_parent"); ok {
-		ids, err := handleSelfParent(cast.ToInt(id))
+		ids, err := handleSelfParent(ctx, cast.ToInt(id))
 		if err != nil {
 			return
 		}
 		db = db.Where("id IN ?", ids)
 	}
 
-	db = db.Order("name DESC")
+	if info && !acl.IsAdmin(currentUser) {
+		ids, err := GetNodeIdsByAuthorization(ctx)
+		if err != nil {
+			return
+		}
+		if ids, err = handleSelfParent(ctx, ids...); err != nil {
+			return
+		}
+		db = db.Where("id IN ?", ids)
+	}
 
-	doGet[*model.Node](ctx, false, db, "", nodePostHooks...)
+	doGet(ctx, !info, db, conf.RESOURCE_NODE, nodePostHooks...)
 }
 
 func nodePreHookCheckCycle(ctx *gin.Context, data *model.Node) {
-	nodes := make([]*model.NodeIdPid, 0)
-	err := mysql.DB.Model(&model.Node{}).Find(&nodes).Error
+	nodes := make([]*model.Node, 0)
+	err := mysql.DB.Model(model.DefaultNode).Find(&nodes).Error
 	g := make(map[int][]int)
 	for _, n := range nodes {
 		g[n.ParentId] = append(g[n.ParentId], n.Id)
@@ -120,33 +146,33 @@ func nodePreHookCheckCycle(ctx *gin.Context, data *model.Node) {
 
 func nodePostHookCountAsset(ctx *gin.Context, data []*model.Node) {
 	currentUser, _ := acl.GetSessionFromCtx(ctx)
-	isAdmin := acl.IsAdmin(currentUser)
 	assets := make([]*model.AssetIdPid, 0)
-	db := mysql.DB.Model(&model.Asset{})
-	if !isAdmin {
-		authorizationResourceIds, err := GetAutorizationResourceIds(ctx)
-		if err != nil {
-			ctx.AbortWithError(http.StatusInternalServerError, err)
-			return
+	db := mysql.DB.Model(model.DefaultAsset)
+	if !acl.IsAdmin(currentUser) {
+		info := cast.ToBool(ctx.Query("info"))
+		if info {
+			assetIds, err := GetAssetIdsByAuthorization(ctx)
+			if err != nil {
+				return
+			}
+			db = db.Where("id IN ?", assetIds)
+		} else {
+			assetResId, err := acl.GetRoleResourceIds(ctx, currentUser.GetRid(), conf.RESOURCE_ASSET)
+			if err != nil {
+				return
+			}
+			db, err = handleAssetIds(ctx, db, assetResId)
+			if err != nil {
+				return
+			}
 		}
-		ids := make([]int, 0)
-		if err = mysql.DB.
-			Model(&model.Authorization{}).
-			Where("resource_id IN ?", authorizationResourceIds).
-			Distinct().
-			Pluck("asset_id", &ids).
-			Error; err != nil {
-			ctx.AbortWithError(http.StatusInternalServerError, &ApiError{Code: ErrInternal, Data: map[string]any{"err": err}})
-			return
-		}
-		db = db.Where("id IN ?", ids)
 	}
 	if err := db.Find(&assets).Error; err != nil {
 		logger.L().Error("node posthookfailed asset count", zap.Error(err))
 		return
 	}
-	nodes := make([]*model.NodeIdPid, 0)
-	if err := mysql.DB.Model(&model.Node{}).Find(&nodes).Error; err != nil {
+	nodes, err := util.GetAllFromCacheDb(ctx, model.DefaultNode)
+	if err != nil {
 		logger.L().Error("node posthookfailed node", zap.Error(err))
 		return
 	}
@@ -173,25 +199,52 @@ func nodePostHookCountAsset(ctx *gin.Context, data []*model.Node) {
 }
 
 func nodePostHookHasChild(ctx *gin.Context, data []*model.Node) {
-	ps := make([]int, 0)
-	if err := mysql.DB.
-		Model(&model.Node{}).
-		Where("parent_id IN ?", lo.Map(data, func(n *model.Node, _ int) int { return n.Id })).
-		Pluck("parent_id", &ps).
-		Error; err != nil {
-		logger.L().Error("node posthookfailed has child", zap.Error(err))
-		return
+	info := cast.ToBool(ctx.Query("info"))
+	ps := make(map[int]bool, 0)
+	currentUser, _ := acl.GetSessionFromCtx(ctx)
+	nodes, _ := util.GetAllFromCacheDb(ctx, model.DefaultNode)
+	if acl.IsAdmin(currentUser) {
+		ps = lo.SliceToMap(nodes, func(n *model.Node) (int, bool) { return n.ParentId, true })
+	} else {
+		assets, _ := util.GetAllFromCacheDb(ctx, model.DefaultAsset)
+		if info {
+			assetIds, _ := GetAssetIdsByAuthorization(ctx)
+			assets = lo.Filter(assets, func(a *model.Asset, _ int) bool { return lo.Contains(assetIds, a.Id) })
+			pids := lo.Map(assets, func(a *model.Asset, _ int) int { return a.ParentId })
+			pids, _ = handleSelfParent(ctx, pids...)
+			nodes = lo.Filter(nodes, func(n *model.Node, _ int) bool { return lo.Contains(pids, n.Id) })
+			ps = lo.SliceToMap(nodes, func(a *model.Node) (int, bool) { return a.ParentId, true })
+		} else {
+			var assetResIds, nodeResIds, pids, nids []int
+			eg := errgroup.Group{}
+			eg.Go(func() (err error) {
+				assetResIds, err = acl.GetRoleResourceIds(ctx, currentUser.GetRid(), conf.RESOURCE_ASSET)
+				assets = lo.Filter(assets, func(a *model.Asset, _ int) bool { return lo.Contains(assetResIds, a.ResourceId) })
+				pids = lo.Map(assets, func(n *model.Asset, _ int) int { return n.ParentId })
+				pids, _ = handleSelfParent(ctx, pids...)
+				return
+			})
+			eg.Go(func() (err error) {
+				nodeResIds, err = acl.GetRoleResourceIds(ctx, currentUser.GetRid(), conf.RESOURCE_NODE)
+				ns := lo.Filter(nodes, func(n *model.Node, _ int) bool { return lo.Contains(nodeResIds, n.ResourceId) })
+				nids, _ = handleSelfChild(ctx, lo.Map(ns, func(n *model.Node, _ int) int { return n.Id })...)
+				nids, _ = handleSelfParent(ctx, nids...)
+				return
+			})
+			eg.Wait()
+			nodes = lo.Filter(nodes, func(n *model.Node, _ int) bool { return lo.Contains(pids, n.Id) || lo.Contains(nids, n.Id) })
+			ps = lo.SliceToMap(nodes, func(n *model.Node) (int, bool) { return n.ParentId, true })
+		}
 	}
-	pm := lo.SliceToMap(ps, func(pid int) (int, bool) { return pid, true })
 	for _, n := range data {
-		n.HasChild = pm[n.Id]
+		n.HasChild = ps[n.Id]
 	}
 }
 
 func nodeDelHook(ctx *gin.Context, id int) {
 	noChild := true
-	noChild = noChild && errors.Is(mysql.DB.Model(&model.Node{}).Select("id").Where("parent_id = ?", id).First(map[string]any{}).Error, gorm.ErrRecordNotFound)
-	noChild = noChild && errors.Is(mysql.DB.Model(&model.Asset{}).Select("id").Where("parent_id = ?", id).First(map[string]any{}).Error, gorm.ErrRecordNotFound)
+	noChild = noChild && errors.Is(mysql.DB.Model(model.DefaultNode).Select("id").Where("parent_id = ?", id).First(map[string]any{}).Error, gorm.ErrRecordNotFound)
+	noChild = noChild && errors.Is(mysql.DB.Model(model.DefaultAsset).Select("id").Where("parent_id = ?", id).First(map[string]any{}).Error, gorm.ErrRecordNotFound)
 	if noChild {
 		return
 	}
@@ -200,46 +253,124 @@ func nodeDelHook(ctx *gin.Context, id int) {
 	ctx.AbortWithError(http.StatusBadRequest, err)
 }
 
-func handleNoSelfChild(id int) (ids []int, err error) {
-	nodes := make([]*model.NodeIdPid, 0)
-	if err = mysql.DB.Model(&model.Node{}).Find(&nodes).Error; err != nil {
+func handleNoSelfChild(ctx context.Context, ids ...int) (res []int, err error) {
+	nodes, err := util.GetAllFromCacheDb(ctx, model.DefaultNode)
+	if err != nil {
 		return
 	}
+
 	g := make(map[int][]int)
 	for _, n := range nodes {
 		g[n.ParentId] = append(g[n.ParentId], n.Id)
 	}
-	var dfs func(int)
-	dfs = func(x int) {
-		ids = append(ids, x)
+	var dfs func(int, bool)
+	dfs = func(x int, b bool) {
+		if b {
+			res = append(res, x)
+		}
 		for _, y := range g[x] {
-			dfs(y)
+			dfs(y, b || lo.Contains(ids, x))
 		}
 	}
-	dfs(id)
+	dfs(0, false)
 
 	return
 }
 
-func handleSelfParent(id int) (ids []int, err error) {
-	nodes := make([]*model.NodeIdPid, 0)
-	if err = mysql.DB.Model(&model.Node{}).Find(&nodes).Error; err != nil {
+func handleNoSelfParent(ctx context.Context, ids ...int) (res []int, err error) {
+	nodes, err := util.GetAllFromCacheDb(ctx, model.DefaultNode)
+	if err != nil {
 		return
 	}
+
 	g := make(map[int][]int)
 	for _, n := range nodes {
 		g[n.ParentId] = append(g[n.ParentId], n.Id)
 	}
+	t := make([]int, 0)
 	var dfs func(int)
 	dfs = func(x int) {
-		ids = append(ids, x)
+		if lo.Contains(ids, x) {
+			res = append(res, t...)
+		}
+		t = append(t, x)
 		for _, y := range g[x] {
 			dfs(y)
 		}
+		t = t[:len(t)-1]
 	}
-	dfs(id)
+	dfs(0)
 
-	ids = append(lo.Without(lo.Keys(g), ids...), id)
+	res = lo.Uniq(res)
+
+	return
+}
+
+func handleSelfParent(ctx context.Context, ids ...int) (res []int, err error) {
+	res, err = handleNoSelfParent(ctx, ids...)
+	if err != nil {
+		return
+	}
+	res = lo.Uniq(append(res, ids...))
+
+	return
+}
+
+func handleSelfChild(ctx context.Context, ids ...int) (res []int, err error) {
+	res, err = handleNoSelfChild(ctx, ids...)
+	if err != nil {
+		return
+	}
+	res = lo.Uniq(append(res, ids...))
+
+	return
+}
+
+func GetNodeIdsByAuthorization(ctx *gin.Context) (ids []int, err error) {
+	assetIds, err := GetAssetIdsByAuthorization(ctx)
+	if err != nil {
+		return
+	}
+	assets, _ := util.GetAllFromCacheDb(ctx, model.DefaultAsset)
+	assets = lo.Filter(assets, func(a *model.Asset, _ int) bool { return lo.Contains(assetIds, a.Id) })
+	ids = lo.Uniq(lo.Map(assets, func(a *model.Asset, _ int) int { return a.ParentId }))
+
+	return
+}
+
+func handleSelfChildPerms(ctx context.Context, id2perms map[int][]string) (res map[int][]string, err error) {
+	nodes, err := util.GetAllFromCacheDb(ctx, model.DefaultNode)
+	if err != nil {
+		return
+	}
+
+	res = make(map[int][]string)
+	id2rid := make(map[int]int)
+	g := make(map[int][]int)
+	for _, n := range nodes {
+		g[n.ParentId] = append(g[n.ParentId], n.Id)
+		id2rid[n.Id] = n.ResourceId
+		res[id2rid[n.Id]] = id2perms[id2rid[n.Id]]
+	}
+	var dfs func(int)
+	dfs = func(x int) {
+		for _, y := range g[x] {
+			res[id2rid[y]] = lo.Uniq(append(res[id2rid[y]], res[id2rid[x]]...))
+			dfs(y)
+		}
+	}
+	dfs(0)
+
+	return
+}
+
+func getNodeId2ResId(ctx context.Context) (resid2ids map[int]int, err error) {
+	nodes, err := util.GetAllFromCacheDb(ctx, model.DefaultNode)
+	if err != nil {
+		return
+	}
+
+	resid2ids = lo.SliceToMap(nodes, func(n *model.Node) (int, int) { return n.Id, n.ResourceId })
 
 	return
 }

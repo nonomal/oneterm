@@ -10,80 +10,48 @@
         </tr>
         <tr v-for="(item, index) in countList" :key="item.id">
           <td>
-            <treeselect
-              class="custom-treeselect custom-treeselect-bgcAndBorder"
-              :style="{
-                '--custom-height': '32px',
-                lineHeight: '32px',
-                '--custom-bg-color': '#fff',
-                '--custom-border': '1px solid #d9d9d9',
-              }"
+            <a-select
               v-model="item.name"
-              :multiple="false"
-              :clearable="true"
-              searchable
-              :options="accountList"
-              :placeholder="`${$t(`placeholder2`)}`"
-              :normalizer="
-                (node) => {
-                  return {
-                    id: node.id,
-                    label: node.name,
-                  }
-                }
-              "
-              @select="(node, instanceId) => selectAccount(node, instanceId, index)"
-              @input="(value, instanceId) => deselectAccount(value, instanceId, index)"
-              appendToBody
-              :z-index="1056"
+              showSearch
+              :style="{
+                width: '180px',
+              }"
+              :placeholder="$t('placeholder2')"
+              optionFilterProp="title"
+              allowClear
+              @change="(value) => selectAccount(value, index)"
             >
-              <div
-                :title="node.label"
-                slot="option-label"
-                slot-scope="{ node }"
-                :style="{ width: '100%', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }"
+              <a-select-option
+                v-for="(node, nodeIndex) in accountList"
+                :key="node.id + nodeIndex"
+                :value="node.id"
+                :title="node.name"
               >
-                {{ node.label }}
-              </div>
-            </treeselect>
+                {{ node.name }}
+              </a-select-option>
+            </a-select>
           </td>
           <td>
-            <treeselect
-              class="custom-treeselect custom-treeselect-bgcAndBorder"
-              :style="{
-                '--custom-height': '32px',
-                lineHeight: '32px',
-                '--custom-bg-color': '#fff',
-                '--custom-border': '1px solid #d9d9d9',
-              }"
+            <a-select
               v-model="item.account"
-              :multiple="false"
-              :clearable="true"
-              searchable
-              :options="accountList"
-              :placeholder="`${$t(`placeholder2`)}`"
-              :normalizer="
-                (node) => {
-                  return {
-                    id: node.id,
-                    label: node.account,
-                  }
-                }
-              "
-              @select="(node, instanceId) => selectAccount(node, instanceId, index)"
-              @input="(value, instanceId) => deselectAccount(value, instanceId, index)"
-              appendToBody
-              :z-index="1056"
+              :style="{
+                width: '180px',
+              }"
+              showSearch
+              :placeholder="$t('placeholder2')"
+              optionFilterProp="title"
+              allowClear
+              @change="(value) => selectAccount(value, index)"
             >
-              <div
-                :title="node.label"
-                slot="option-label"
-                slot-scope="{ node }"
-                :style="{ width: '100%', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }"
+              <a-select-option
+                v-for="(node, nodeIndex) in accountList"
+                :key="node.id + nodeIndex"
+                :value="node.id"
+                :title="node.account"
               >
-                {{ node.label }}
-              </div>
-            </treeselect>
+                {{ node.account }}
+              </a-select-option>
+            </a-select>
           </td>
           <td>
             <EmployeeTreeSelect
@@ -102,6 +70,7 @@
                 '--custom-multiple-lineHeight': '18px',
               }"
               :limit="1"
+              :otherOptions="visualRoleList"
             />
           </td>
           <td>
@@ -119,7 +88,9 @@
 <script>
 import { v4 as uuidv4 } from 'uuid'
 import { getAccountList } from '../../../api/account'
+import { searchRole } from '@/modules/acl/api/role'
 import EmployeeTreeSelect from '@/views/setting/components/employeeTreeSelect.vue'
+
 export default {
   name: 'Account',
   components: { EmployeeTreeSelect },
@@ -139,36 +110,53 @@ export default {
     }
   },
   created() {
+    this.loadRoles()
     getAccountList({ page_index: 1 }).then((res) => {
       this.accountList = res?.data?.list || []
     })
   },
   methods: {
+    async loadRoles() {
+      const res = await searchRole({ page_size: 9999, page: 1, app_id: 'oneterm', user_role: 0, user_only: 0, is_all: true })
+
+      const visualRoleList = []
+      const roleList = (res?.roles || []).filter((item) => !/_virtual$/.test(item.name))
+
+      if (roleList.length) {
+        visualRoleList.push({
+          acl_rid: -100,
+          department_name: this.$t('acl.visualRole'),
+          sub_departments: [],
+          employees: roleList.map((item) => {
+            return {
+              nickname: item.name,
+              acl_rid: item.id
+            }
+          })
+        })
+      }
+
+      this.$set(this, 'visualRoleList', visualRoleList)
+    },
+
     addCount() {
       this.countList.push({ id: uuidv4(), name: undefined, account: undefined, rids: undefined })
     },
     deleteCount(index) {
       this.countList.splice(index, 1)
     },
-    selectAccount(node, instanceId, index) {
-      const { id } = node
+    selectAccount(id, index) {
       this.$nextTick(() => {
-        this.$set(this.countList, index, { id, name: id, account: id })
+        this.$set(this.countList[index], 'name', id)
+        this.$set(this.countList[index], 'account', id)
       })
-    },
-    deselectAccount(value, instanceId, index) {
-      if (!value) {
-        this.$nextTick(() => {
-          this.$set(this.countList, index, { id: uuidv4(), name: undefined, account: undefined })
-        })
-      }
     },
     getValues() {
       const authorization = {}
       this.countList
-        .filter((count) => typeof count.id === 'number')
+        .filter((count) => count.name)
         .forEach((count) => {
-          authorization[count.id] = count?.rids?.length ? count.rids.map((r) => Number(r.split('-')[1])) : []
+          authorization[count.name] = count?.rids?.length ? count.rids.map((r) => Number(r.split('-')[1])) : []
         })
       return { authorization }
     },
@@ -176,7 +164,7 @@ export default {
       const authorizationList = Object.entries(authorization)
       if (authorizationList.length) {
         this.countList = authorizationList.map(([acc, rids]) => {
-          return { id: Number(acc), name: Number(acc), account: Number(acc), rids: rids.map((r) => `employee-${r}`) }
+          return { id: uuidv4(), name: Number(acc), account: Number(acc), rids: rids.map((r) => `employee-${r}`) }
         })
       } else {
         this.countList = [{ id: uuidv4(), name: undefined, account: undefined, rids: undefined }]

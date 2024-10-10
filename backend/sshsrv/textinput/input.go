@@ -544,6 +544,21 @@ func (m Model) echoTransform(v string) string {
 	}
 }
 
+func (m Model) matchedCommonPrefix() []rune {
+	commonPrefix := m.matchedSuggestions[0]
+	for _, s := range m.matchedSuggestions {
+		str := make([]rune, 0)
+		for i := 0; i < min(len(commonPrefix), len(s)); i++ {
+			if commonPrefix[i] != s[i] {
+				break
+			}
+			str = append(str, commonPrefix[i])
+		}
+		commonPrefix = str
+	}
+	return commonPrefix
+}
+
 // Update is the Bubble Tea update loop.
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	if !m.focus {
@@ -554,18 +569,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	keyMsg, ok := msg.(tea.KeyMsg)
 	if ok && key.Matches(keyMsg, m.KeyMap.AcceptSuggestion) {
 		if m.canAcceptSuggestion() {
-			commonPrefix := m.matchedSuggestions[0]
-			for _, s := range m.matchedSuggestions {
-				str := make([]rune, 0)
-				for i := 0; i < min(len(commonPrefix), len(s)); i++ {
-					if commonPrefix[i] != s[i] {
-						break
-					}
-					str = append(str, commonPrefix[i])
-				}
-				commonPrefix = str
-			}
-			m.value = append(m.value, commonPrefix[len(m.value):]...)
+			m.value = append(m.value, m.matchedCommonPrefix()[len(m.value):]...)
 			m.CursorEnd()
 		}
 	}
@@ -673,7 +677,7 @@ func (m Model) View() string {
 		v += m.completionView(0)                               // suggested completion
 	} else {
 		if m.canAcceptSuggestion() {
-			suggestion := m.matchedSuggestions[m.currentSuggestionIndex]
+			suggestion := m.matchedCommonPrefix()
 			if len(value) < len(suggestion) {
 				m.Cursor.TextStyle = m.CompletionStyle
 				m.Cursor.SetChar(m.echoTransform(string(suggestion[pos])))
@@ -812,7 +816,7 @@ func (m Model) completionView(offset int) string {
 	)
 
 	if m.canAcceptSuggestion() {
-		suggestion := m.matchedSuggestions[m.currentSuggestionIndex]
+		suggestion := m.matchedCommonPrefix()
 		if len(value) < len(suggestion) {
 			return style(string(suggestion[len(value)+offset:]))
 		}
@@ -874,7 +878,7 @@ func (m *Model) updateSuggestions() {
 	for _, s := range m.suggestions {
 		suggestion := string(s)
 
-		if strings.HasPrefix(strings.ToLower(suggestion), strings.ToLower(string(m.value))) {
+		if strings.HasPrefix(suggestion, string(m.value)) {
 			matches = append(matches, []rune(suggestion))
 		}
 	}

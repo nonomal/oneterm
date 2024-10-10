@@ -5,12 +5,18 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"encoding/base64"
+
+	"github.com/veops/oneterm/conf"
 )
 
 var (
-	key = []byte("thisis32bitlongpassphraseimusing")
-	iv  = []byte("0123456789abcdef")
+	key, iv []byte
 )
+
+func init() {
+	key = []byte(conf.Cfg.Auth.Aes.Key)
+	iv = []byte(conf.Cfg.Auth.Aes.Iv)
+}
 
 func EncryptAES(plainText string) string {
 	block, _ := aes.NewCipher(key)

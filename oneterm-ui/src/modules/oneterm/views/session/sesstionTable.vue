@@ -88,7 +88,7 @@
                     <a :href="`/api/oneterm/v1/session/replay/${row.session_id}`"><a-icon type="download"/></a>
                   </a-tooltip>
                   <a-tooltip :title="$t('oneterm.menu.commandRecord')">
-                    <a @click="openDetail(row)"><ops-icon type="oneterm-commandrecord"/></a>
+                    <a @click="openDetail(row)"><ops-icon type="oneterm-command_record"/></a>
                   </a-tooltip>
                 </template>
                 <template v-else>
@@ -240,11 +240,11 @@ export default {
       if (row.protocol.includes('rdp') || row.protocol.includes('vnc')) {
         const { asset_id, account_id, protocol } = row
         window.open(
-          `/oneterm/guacamole/${asset_id}/${account_id}/${protocol}?session_id=${row.session_id}&&is_monitor=true`,
+          `/oneterm/guacamole/${asset_id}/${account_id}/${protocol}?session_id=${row.session_id}&is_monitor=true`,
           '_blank'
         )
       } else {
-        window.open(`/oneterm/terminal?session_id=${row.session_id}&&is_monitor=true`, '_blank')
+        window.open(`/oneterm/terminal?session_id=${row.session_id}&is_monitor=true`, '_blank')
       }
     },
     disconnect(row) {

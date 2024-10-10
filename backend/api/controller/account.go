@@ -73,7 +73,7 @@ var (
 		func(ctx *gin.Context, id int) {
 			assetName := ""
 			err := mysql.DB.
-				Model(&model.Asset{}).
+				Model(model.DefaultAsset).
 				Select("name").
 				Where("id = (?)", mysql.DB.Model(&model.Authorization{}).Select("asset_id").Where("account_id = ?", id).Limit(1)).
 				First(&assetName).
@@ -105,7 +105,7 @@ func (c *Controller) CreateAccount(ctx *gin.Context) {
 //	@Success	200	{object}	HttpResponse
 //	@Router		/account/:id [delete]
 func (c *Controller) DeleteAccount(ctx *gin.Context) {
-	doDelete(ctx, true, &model.Account{}, accountDcs...)
+	doDelete(ctx, true, &model.Account{}, conf.RESOURCE_ACCOUNT, accountDcs...)
 }
 
 // UpdateAccount godoc
@@ -116,7 +116,7 @@ func (c *Controller) DeleteAccount(ctx *gin.Context) {
 //	@Success	200		{object}	HttpResponse
 //	@Router		/account/:id [put]
 func (c *Controller) UpdateAccount(ctx *gin.Context) {
-	doUpdate(ctx, true, &model.Account{}, accountPreHooks...)
+	doUpdate(ctx, true, &model.Account{}, conf.RESOURCE_ACCOUNT, accountPreHooks...)
 }
 
 // GetAccounts godoc
@@ -145,27 +145,33 @@ func (c *Controller) GetAccounts(ctx *gin.Context) {
 	}
 
 	if info && !acl.IsAdmin(currentUser) {
-		//rs := make([]*acl.Resource, 0)
-		rs, err := acl.GetRoleResources(ctx, currentUser.Acl.Rid, acl.GetResourceTypeName(conf.RESOURCE_AUTHORIZATION))
+		ids, err := GetAccountIdsByAuthorization(ctx)
 		if err != nil {
-			handleRemoteErr(ctx, err)
-			return
-		}
-		ids := make([]int, 0)
-		if err = mysql.DB.
-			Model(&model.Authorization{}).
-			Where("resource_id IN ?", lo.Map(rs, func(r *acl.Resource, _ int) int { return r.ResourceId })).
-			Distinct().
-			Pluck("account_id", &ids).
-			Error; err != nil {
 			ctx.AbortWithError(http.StatusInternalServerError, &ApiError{Code: ErrInternal, Data: map[string]any{"err": err}})
 			return
 		}
-
 		db = db.Where("id IN ?", ids)
 	}
 
 	db = db.Order("name")
 
-	doGet[*model.Account](ctx, !info, db, acl.GetResourceTypeName(conf.RESOURCE_ACCOUNT), accountPostHooks...)
+	doGet(ctx, !info, db, conf.RESOURCE_ACCOUNT, accountPostHooks...)
+}
+
+func GetAccountIdsByAuthorization(ctx *gin.Context) (ids []int, err error) {
+	assetIds, err := GetAssetIdsByAuthorization(ctx)
+	if err != nil {
+		ctx.AbortWithError(http.StatusInternalServerError, &ApiError{Code: ErrInternal, Data: map[string]any{"err": err}})
+		return
+	}
+	ss := make([]model.Slice[string], 0)
+	if err = mysql.DB.Model(model.DefaultAsset).Where("id IN ?", assetIds).Pluck("JSON_KEYS(authorization)", &ss).Error; err != nil {
+		ctx.AbortWithError(http.StatusInternalServerError, &ApiError{Code: ErrInternal, Data: map[string]any{"err": err}})
+		return
+	}
+	ids = lo.Uniq(lo.Map(lo.Flatten(ss), func(s string, _ int) int { return cast.ToInt(s) }))
+	_, _, accountIds := getIdsByAuthorizationIds(ctx)
+	ids = lo.Uniq(append(ids, accountIds...))
+
+	return
 }

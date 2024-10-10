@@ -7,14 +7,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/samber/lo"
 	"github.com/spf13/cast"
 	"github.com/veops/oneterm/conf"
 	ggateway "github.com/veops/oneterm/gateway"
 	"github.com/veops/oneterm/logger"
 	"github.com/veops/oneterm/model"
-	"github.com/veops/oneterm/util"
 )
 
 const (
@@ -45,13 +43,14 @@ type Tunnel struct {
 	gw           *ggateway.GatewayTunnel
 }
 
-func NewTunnel(connectionId string, w, h, dpi int, protocol string, asset *model.Asset, account *model.Account, gateway *model.Gateway) (t *Tunnel, err error) {
+func NewTunnel(connectionId, sessionId string, w, h, dpi int, protocol string, asset *model.Asset, account *model.Account, gateway *model.Gateway) (t *Tunnel, err error) {
 	conn, err := net.DialTimeout("tcp", fmt.Sprintf("%s:%d", conf.Cfg.Guacd.Host, conf.Cfg.Guacd.Port), time.Second*3)
 	if err != nil {
 		return
 	}
 	ss := strings.Split(protocol, ":")
 	protocol, port := ss[0], ss[1]
+	cfg := model.GlobalConfig.Load()
 	t = &Tunnel{
 		conn:         conn,
 		reader:       bufio.NewReader(conn),
@@ -74,9 +73,9 @@ func NewTunnel(connectionId string, w, h, dpi int, protocol string, asset *model
 						"hostname":              asset.Ip,
 						"port":                  port,
 						"username":              account.Account,
-						"password":              util.DecryptAES(account.Password),
-						"disable-copy":          "false",
-						"disable-paste":         "false",
+						"password":              account.Password,
+						"disable-copy":          cast.ToString(lo.Ternary(strings.Contains(protocol, "rdp"), !cfg.RdpConfig.Copy, !cfg.VncConfig.Copy)),
+						"disable-paste":         cast.ToString(lo.Ternary(strings.Contains(protocol, "rdp"), !cfg.RdpConfig.Paste, !cfg.VncConfig.Paste)),
 					}
 				}, func() map[string]string {
 					return map[string]string{
@@ -89,7 +88,7 @@ func NewTunnel(connectionId string, w, h, dpi int, protocol string, asset *model
 		},
 	}
 	if t.ConnectionId == "" {
-		t.SessionId = uuid.New().String()
+		t.SessionId = sessionId
 		t.Config.Parameters["recording-name"] = t.SessionId
 	}
 	if gateway != nil && gateway.Id != 0 && t.ConnectionId == "" {
@@ -167,6 +166,9 @@ func (t *Tunnel) handshake() (err error) {
 }
 
 func (t *Tunnel) Write(p []byte) (n int, err error) {
+	if t == nil || t.writer == nil {
+		return
+	}
 	n, err = t.writer.Write(p)
 	if err != nil {
 		return

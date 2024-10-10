@@ -3,11 +3,14 @@
     class="oneterm-asset-list"
     :appName="`oneterm-asset-list-${forMyAsset}`"
     :style="{ height: `${windowHeight - 112}px` }"
+    :triggerLength="8"
+    calcBasedParent
   >
     <template #one>
       <div class="asset-list-sidebar-header" v-if="!forMyAsset">
         <strong>{{ $t(`oneterm.assetList.assetTree`) }}</strong>
         <div
+          v-if="showCreateNodeBtn"
           @click="
             () => {
               $emit('openNode', null)
@@ -15,7 +18,7 @@
           "
         >
           <span><a-icon type="plus" style="color:#2F54EB"/></span>
-          {{ $t(`oneterm.assetList.createFloder`) }}
+          {{ $t(`oneterm.assetList.createNode`) }}
         </div>
       </div>
       <a-tree
@@ -31,26 +34,38 @@
         }"
       >
         <template #title="node">
-          <a-dropdown :trigger="['contextmenu']" :disabled="forMyAsset">
-            <div class="asset-list-sidebar-tree-title" @click="clickNode(node.dataRef)">
-              <ops-icon :type="selectedKeys[0] === node.dataRef.id ? 'oneterm-file-selected' : 'oneterm-file'" />
-              <span :title="node.dataRef.name">{{ node.dataRef.name }}</span>
-              <span>({{ node.dataRef.asset_count }})</span>
-            </div>
-            <template #overlay>
-              <a-menu>
-                <a-menu-item key="1" @click="$emit('openNode', { parent_id: node.dataRef.id })">{{
-                  $t(`oneterm.assetList.createFloder`)
-                }}</a-menu-item>
-                <a-menu-item key="2" @click="$emit('openNode', node.dataRef)">{{
-                  $t(`oneterm.assetList.editFloder`)
-                }}</a-menu-item>
-                <a-menu-item key="3" @click="deleteNode(node.dataRef)">{{
-                  $t(`oneterm.assetList.deleteFloder`)
-                }}</a-menu-item>
-              </a-menu>
-            </template>
-          </a-dropdown>
+          <div class="asset-list-sidebar-tree-title" @click="clickNode(node.dataRef)">
+            <ops-icon :type="selectedKeys[0] === node.dataRef.id ? 'oneterm-file-selected' : 'oneterm-file'" />
+            <span :title="node.dataRef.name">{{ node.dataRef.name }}</span>
+            <span>({{ node.dataRef.asset_count }})</span>
+            <a-dropdown v-if="!forMyAsset && showNodeOperation(node.dataRef, ['write', 'delete', 'grant'])" :disabled="forMyAsset">
+              <ops-icon class="asset-list-sidebar-tree-title-more" type="veops-more" />
+
+              <template #overlay>
+                <a-menu>
+                  <a-menu-item key="1" v-if="showNodeOperation(node.dataRef, ['write'])" @click="$emit('openNode', { parent_id: node.dataRef.id })">
+                    <a-icon type="plus-circle" />
+                    {{ $t(`oneterm.assetList.createSubNode`) }}
+                  </a-menu-item>
+                  <a-menu-item key="2" v-if="showNodeOperation(node.dataRef, ['write'])" @click="$emit('openNode', node.dataRef)">
+                    <ops-icon type="icon-xianxing-edit" />
+                    {{ $t(`oneterm.assetList.editNode`) }}
+                  </a-menu-item>
+                  <a-menu-item key="3" v-if="showNodeOperation(node.dataRef, ['delete'])" @click="deleteNode(node.dataRef)">
+                    <ops-icon type="veops-delete" />
+                    {{ $t(`oneterm.assetList.deleteNode`) }}
+                  </a-menu-item>
+                  <template v-if="showNodeOperation(node.dataRef, ['grant'])">
+                    <a-divider style="margin: 4px 0" />
+                    <a-menu-item key="4" @click="openGrantModal(node.dataRef)">
+                      <a-icon type="user-add" />
+                      {{ $t(`oneterm.assetList.grantNode`) }}
+                    </a-menu-item>
+                  </template>
+                </a-menu>
+              </template>
+            </a-dropdown>
+          </div>
         </template>
       </a-tree>
     </template>
@@ -62,7 +77,6 @@
               allow-clear
               v-model="filterName"
               :style="{ width: '250px' }"
-              class="ops-input ops-input-radius"
               :placeholder="$t('placeholderSearch')"
               @search="updateTableData()"
             />
@@ -70,32 +84,28 @@
           <a-space>
             <div class="ops-list-batch-action" v-show="!!selectedRowKeys.length">
               <span @click="batchUpdate('access_auth')">{{ $t('oneterm.accessRestrictions') }}</span>
-              <span @click="batchUpdate('account_ids')">{{ $t('grant') }}</span>
+              <span @click="authAsset">{{ $t('grant') }}</span>
               <span @click="batchUpdate('protocols')">{{ $t('oneterm.assetList.editProtocol') }}</span>
               <span>{{ $t('selectRows', { rows: selectedRowKeys.length }) }}</span>
             </div>
-            <a-button v-if="!forMyAsset && selectedKeys && selectedKeys.length" type="primary" @click="createAsset">{{
-              $t(`create`)
-            }}</a-button>
+            <a-button v-if="!forMyAsset && selectedKeys && selectedKeys.length && showCreateNodeBtn" type="primary" @click="createAsset">
+              {{ $t(`create`) }}
+            </a-button>
             <a-button
-              @click="
-                () => {
-                  updateTableData()
-                  selectedRowKeys = []
-                  $refs.opsTable.getVxetableRef().clearCheckboxRow()
-                  $refs.opsTable.getVxetableRef().clearCheckboxReserve()
-                }
-              "
-            >{{ $t(`refresh`) }}</a-button
+              type="primary"
+              class="ops-button-ghost"
+              ghost
+              @click="handleRefresh"
             >
+              <ops-icon type="veops-refresh" />
+              {{ $t('refresh') }}
+            </a-button>
           </a-space>
         </div>
         <div class="asset-list-table">
           <ops-table
             size="small"
             ref="opsTable"
-            stripe
-            class="ops-stripe-table"
             :data="tableData"
             show-overflow
             show-header-overflow
@@ -103,13 +113,31 @@
             @checkbox-all="onSelectChange"
             @checkbox-range-end="onSelectRangeEnd"
             :checkbox-config="{ reserve: true, highlight: true, range: true }"
+            :expand-config="{iconOpen: 'vxe-icon-square-minus', iconClose: 'vxe-icon-square-plus'}"
             :row-config="{ keyField: 'id' }"
             height="auto"
             resizable
             :loading="loading"
           >
             <vxe-column type="checkbox" width="60px" v-if="!forMyAsset"></vxe-column>
-            <vxe-column :title="$t(`oneterm.name`)" field="name"> </vxe-column>
+            <vxe-column :type="forMyAsset ? 'expand' : ''" :title="$t(`oneterm.name`)" field="name">
+              <template #default="{ row }">
+                <span>{{ row.name }}</span>
+              </template>
+              <template #content="{ row }">
+                <div v-if="row.accountList.length" class="oneterm-table-account">
+                  <div
+                    v-for="(item) in row.accountList"
+                    :key="item.protocol + item.account_id"
+                    class="oneterm-table-account-item"
+                    @click="openTerminal(row.id, row.name, item)"
+                  >
+                    <ops-icon class="oneterm-table-account-protocol" :type="item.protocolIcon" />
+                    <span class="oneterm-table-account-name">{{ item.account_name }}</span>
+                  </div>
+                </div>
+              </template>
+            </vxe-column>
             <vxe-column :title="$t(`oneterm.assetList.ip`)" field="ip"> </vxe-column>
             <vxe-column :title="$t(`oneterm.assetList.nodeName`)" field="node_chain"> </vxe-column>
             <vxe-column
@@ -126,19 +154,41 @@
             <vxe-column :title="$t(`operation`)" :width="100" align="center">
               <template #default="{row}">
                 <a-space v-if="!forMyAsset">
-                  <a @click="openAsset(row)"><ops-icon type="icon-xianxing-edit"/></a>
-                  <a-popconfirm :title="$t('confirmDelete')" @confirm="deleteAsset(row)">
+                  <a
+                    v-if="row.accountList.length && showAssetOperation(row, 'grant')"
+                    class="oneterm-table-operation-login"
+                    @click="createTempLink(row)"
+                  >
+                    <ops-icon type="veops-link" />
+                  </a>
+                  <a
+                    v-if="showAssetOperation(row, 'write')"
+                    @click="openAsset(row)"
+                  >
+                    <ops-icon type="icon-xianxing-edit"/>
+                  </a>
+                  <a-popconfirm
+                    v-if="showAssetOperation(row, 'delete')"
+                    :title="$t('confirmDelete')"
+                    @confirm="deleteAsset(row)"
+                  >
                     <a style="color:red"><ops-icon type="icon-xianxing-delete"/></a>
                   </a-popconfirm>
                 </a-space>
-                <a-tooltip v-else :title="$t(`login`)">
-                  <a
-                    :disabled="!Object.keys(row.authorization).length || !row.protocols.length"
-                    @click="openLogin(row.id, row.authorization, row.protocols)"
-                  ><ops-icon
-                    type="oneterm-switch"
-                  /></a>
-                </a-tooltip>
+                <a-space v-else-if="row.accountList.length">
+                  <a-tooltip
+                    v-for="(item) in row._protocols"
+                    :key="item.key"
+                    :title="item.key"
+                  >
+                    <a
+                      class="oneterm-table-operation-login"
+                      @click="clickProtocol(item, row)"
+                    >
+                      <ops-icon v-if="item.icon" :type="item.icon" />
+                    </a>
+                  </a-tooltip>
+                </a-space>
               </template>
             </vxe-column>
           </ops-table>
@@ -176,7 +226,21 @@
           }
         "
       />
-      <LoginModal ref="loginModal" />
+      <LoginModal
+        ref="loginModal"
+        :showProtocol="false"
+        :choiceAccountByCheckbox="true"
+        :forMyAsset="forMyAsset"
+        @openTerminal="loginOpenTerminal"
+        @openTerminalList="loginOpenTerminalList"
+      />
+
+      <TempLinkModal
+        ref="tempLinkModalRef"
+        :accountList="accountList"
+      />
+
+      <GrantModal ref="grantModalRef" />
     </template>
   </TwoColumnLayout>
 </template>
@@ -187,11 +251,15 @@ import { mapState } from 'vuex'
 import TwoColumnLayout from '@/components/TwoColumnLayout'
 import { getNodeList, deleteNodeById, getNodeById } from '../../../api/node'
 import { getAssetList, deleteAssetById } from '../../../api/asset'
+import { getAccountList } from '../../../api/account'
 import BatchUpdateModal from './batchUpdateModal.vue'
 import LoginModal from './loginModal.vue'
+import TempLinkModal from './tempLink/tempLinkModal.vue'
+import GrantModal from '@/modules/oneterm/components/grant/grantModal.vue'
+
 export default {
   name: 'AssetList',
-  components: { TwoColumnLayout, BatchUpdateModal, LoginModal },
+  components: { TwoColumnLayout, BatchUpdateModal, LoginModal, TempLinkModal, GrantModal },
   props: {
     forMyAsset: {
       type: Boolean,
@@ -211,6 +279,7 @@ export default {
         totalResult: 0,
       },
       selectedRowKeys: [],
+      accountList: [],
       loading: false,
       refreshTreeFlag: false,
     }
@@ -218,7 +287,24 @@ export default {
   computed: {
     ...mapState({
       windowHeight: (state) => state.windowHeight,
+      rid: (state) => state.user.rid,
+      roles: (state) => state.user.roles,
     }),
+    isCreateRootNode() {
+      return true
+    },
+    showCreateNodeBtn() {
+      if (this.selectedKeys.length === 0) {
+        return this.isCreateRootNode
+      }
+      let currentNode = null
+      this.treeForeach(this.treeData, (node) => {
+        if (node.id === this.selectedKeys[0]) {
+          currentNode = node
+        }
+      })
+      return currentNode?.permissions?.some?.((perm) => perm === 'write') || false
+    }
   },
   watch: {
     selectedKeys: {
@@ -229,7 +315,8 @@ export default {
       },
     },
   },
-  mounted() {
+  async mounted() {
+    await this.getAccountList()
     this.getFirstLayout()
   },
   methods: {
@@ -238,7 +325,10 @@ export default {
       this.chainIds = ''
       this.treeData = []
       this.refreshTreeFlag = false
-      getNodeList({ parent_id: 0 }).then((res) => {
+      getNodeList({
+        info: this.forMyAsset,
+        parent_id: 0
+      }).then((res) => {
         this.treeData = (res?.data?.list ?? []).map((item) => ({
           ...item,
           chainId: `${item.id}`,
@@ -247,13 +337,19 @@ export default {
         this.refreshTreeFlag = true
       })
     },
+
+    async getAccountList() {
+      const res = await getAccountList({ page_index: 1, info: this.forMyAsset })
+      this.accountList = res?.data?.list || []
+    },
+
     onLoadData(treeNode) {
       return new Promise((resolve) => {
         if (treeNode.dataRef.children) {
           resolve()
           return
         }
-        getNodeList({ parent_id: treeNode.dataRef.id }).then((res) => {
+        getNodeList({ parent_id: treeNode.dataRef.id, info: this.forMyAsset }).then((res) => {
           treeNode.dataRef.children = (res?.data?.list ?? []).map((item) => ({
             ...item,
             chainId: `${treeNode.dataRef.chainId}@${item.id}`,
@@ -298,13 +394,66 @@ export default {
         search: this.filterName,
         info: this.forMyAsset,
       })
-        .then((res) => {
-          this.tableData = res?.data?.list || []
+        .then(async (res) => {
+          const protocolIconMap = {
+            'ssh': 'a-oneterm-ssh2',
+            'rdp': 'a-oneterm-ssh1',
+            'vnc': 'oneterm-rdp',
+          }
+
+          const tableData = res?.data?.list || []
+          tableData.forEach((row) => {
+            row._protocols = row?.protocols?.map((item) => {
+              const key = item?.split?.(':')?.[0] || ''
+
+              return {
+                key,
+                value: item,
+                icon: protocolIconMap?.[key] || ''
+              }
+            }) || []
+
+            const accountList = []
+            row._protocols.forEach((protocol) => {
+              Object.keys(row.authorization).forEach((acc_id) => {
+                const _find = this.accountList?.find((item) => Number(item.id) === Number(acc_id))
+                if (_find) {
+                  accountList.push({
+                    account_id: _find.id,
+                    account_name: _find.name,
+                    protocol: protocol.value,
+                    protocolType: protocol.key,
+                    protocolIcon: protocol.icon,
+                  })
+                }
+              })
+            })
+            row.accountList = accountList
+          })
+
+          this.tableData = tableData
           this.tablePage = {
             ...this.tablePage,
             currentPage,
             pageSize,
             totalResult: res?.data?.count ?? 0,
+          }
+
+          if (this.treeData && this.selectedKeys?.[0]) {
+            const updateDataRes = await getNodeList({
+              self_parent: this.selectedKeys?.[0],
+              info: this.forMyAsset
+            })
+            const updateDataList = updateDataRes?.data?.list || []
+
+            if (updateDataList.length) {
+              this.treeForeach(this.treeData, (node) => {
+                const updateData = updateDataList?.find?.((data) => node.id === data.id)
+                if (updateData) {
+                  this.$set(node, 'asset_count', updateData?.asset_count ?? 0)
+                }
+              })
+            }
           }
         })
         .finally(() => {
@@ -349,11 +498,17 @@ export default {
     async updateNodeCount(parent_id = null) {
       let res1 = []
       let res2 = []
-      await getNodeList({ ids: this.chainIds.split('@').join(',') }).then((result1) => {
+      await getNodeList({
+        ids: this.chainIds.split('@').join(','),
+        info: this.forMyAsset
+      }).then((result1) => {
         res1 = result1?.data?.list ?? []
       })
       if (parent_id) {
-        await getNodeList({ self_parent: parent_id }).then((result2) => {
+        await getNodeList({
+          self_parent: parent_id,
+          info: this.forMyAsset
+        }).then((result2) => {
           res2 = result2?.data?.list ?? []
         })
       }
@@ -379,6 +534,92 @@ export default {
         }
       })
     },
+
+    openTerminal(assetId, assetName, data) {
+      this.$emit('openTerminal', {
+        assetId,
+        assetName,
+        accountId: data.account_id,
+        protocol: data.protocol,
+        protocolType: data.protocolType
+      })
+    },
+
+    clickProtocol(protocol, row) {
+      const accountList = []
+
+      Object.keys(row.authorization).forEach((acc_id) => {
+        const _find = this.accountList?.find((item) => Number(item.id) === Number(acc_id))
+
+        if (_find) {
+          accountList.push({
+            account_id: _find.id,
+            account_name: _find.name,
+          })
+        }
+      })
+
+      if (accountList.length > 1) {
+        this.$refs.loginModal.open(row.id, row.name, row.authorization, [protocol.value])
+      } else if (accountList.length === 1) {
+        this.$emit('openTerminal', {
+          assetId: row.id,
+          assetName: row.name,
+          accountId: accountList[0].account_id,
+          protocol: protocol.value,
+          protocolType: protocol.key
+        })
+      }
+    },
+
+    loginOpenTerminal(data) {
+      this.$emit('openTerminal', data)
+    },
+
+    loginOpenTerminalList(data) {
+      this.$emit('openTerminalList', data)
+    },
+
+    async handleRefresh() {
+      this.selectedRowKeys = []
+      this.$refs.opsTable.getVxetableRef().clearCheckboxRow()
+      this.$refs.opsTable.getVxetableRef().clearCheckboxReserve()
+      await this.getAccountList()
+      this.getFirstLayout()
+    },
+
+    createTempLink(row) {
+      this.$refs.tempLinkModalRef.open(row)
+    },
+
+    openGrantModal(node) {
+      this.$refs.grantModalRef.open({
+        ids: [node.id],
+        resourceId: node.resource_id,
+        type: 'node'
+      })
+    },
+
+    authAsset() {
+      const assetIds = this.selectedRowKeys.map((item) => item.id)
+      this.$refs.grantModalRef.open({
+        resourceId: this.selectedRowKeys?.[0]?.resource_id || '',
+        type: 'asset',
+        ids: assetIds
+      })
+    },
+
+    showNodeOperation(node, operationList) {
+      const permissions = this?.roles?.permissions || []
+      const isAdmin = permissions?.includes?.('oneterm_admin') || permissions?.includes?.('acl_admin')
+      return node?.permissions?.some((item) => operationList.includes(item)) || isAdmin
+    },
+
+    showAssetOperation(asset, operaiton) {
+      const permissions = this?.roles?.permissions || []
+      const isAdmin = permissions?.includes?.('oneterm_admin') || permissions?.includes?.('acl_admin')
+      return asset?.permissions?.some((item) => item === operaiton) || isAdmin
+    }
   },
 }
 </script>
@@ -415,6 +656,53 @@ export default {
 .asset-list-table {
   height: calc(100% - 48px - 32.5px);
 }
+
+.oneterm-table-account {
+  padding: 8px 0px 8px 16px;
+  border-left: solid 3px #027BEB;
+  border-top: 1px solid #E4E7ED;
+  background-color: #F9FBFF;
+  box-shadow: 0px -2px 6px 0px rgba(98, 147, 192, 0.10) inset, 0px 2px 6px 0px rgba(98, 147, 192, 0.10) inset;
+
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 17px;
+
+  &-protocol {
+    font-size: 14px;
+    color: #2F54EB;
+    margin-right: 8px;
+  }
+
+  &-name {
+    font-size: 14px;
+    font-weight: 400;
+    color: #1D2129;
+  }
+
+  &-item {
+    padding: 0px 8px;
+    background-color: #EBEFF8;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    border-radius: 2px;
+    border: 1px solid transparent;
+    cursor: pointer;
+
+    &:hover {
+      border-color: #7F97FA;
+      background-color: #E1EFFF;
+    }
+  }
+}
+
+.oneterm-table-operation-login {
+  &:not(:first-child) {
+    margin-left: 6px;
+  }
+}
 </style>
 <style lang="less">
 .oneterm-asset-list.two-column-layout .two-column-layout-main {
@@ -431,6 +719,8 @@ export default {
     .asset-list-sidebar-tree-title {
       display: flex;
       align-items: center;
+      padding-right: 5px;
+
       i {
         width: 24px;
       }
@@ -440,6 +730,21 @@ export default {
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
+      }
+
+      &-more {
+        display: none;
+        margin-left: 4px;
+
+        &:hover {
+          color: #2f54eb;
+        }
+      }
+
+      &:hover {
+        .asset-list-sidebar-tree-title-more {
+          display: inline-block;
+        }
       }
     }
   }

@@ -47,7 +47,7 @@ var (
 		func(ctx *gin.Context, data []*model.Gateway) {
 			post := make([]*model.GatewayCount, 0)
 			if err := mysql.DB.
-				Model(&model.Asset{}).
+				Model(model.DefaultAsset).
 				Select("gateway_id AS id, COUNT(*) AS count").
 				Where("gateway_id IN ?", lo.Map(data, func(d *model.Gateway, _ int) int { return d.Id })).
 				Group("gateway_id").
@@ -72,7 +72,7 @@ var (
 		func(ctx *gin.Context, id int) {
 			assetName := ""
 			err := mysql.DB.
-				Model(&model.Asset{}).
+				Model(model.DefaultAsset).
 				Select("name").
 				Where("gateway_id = ?", id).
 				First(&assetName).
@@ -104,7 +104,7 @@ func (c *Controller) CreateGateway(ctx *gin.Context) {
 //	@Success	200	{object}	HttpResponse
 //	@Router		/gateway/:id [delete]
 func (c *Controller) DeleteGateway(ctx *gin.Context) {
-	doDelete(ctx, true, &model.Gateway{}, gatewayDcs...)
+	doDelete(ctx, true, &model.Gateway{}, conf.RESOURCE_GATEWAY, gatewayDcs...)
 }
 
 // UpdateGateway godoc
@@ -115,7 +115,7 @@ func (c *Controller) DeleteGateway(ctx *gin.Context) {
 //	@Success	200		{object}	HttpResponse
 //	@Router		/gateway/:id [put]
 func (c *Controller) UpdateGateway(ctx *gin.Context) {
-	doUpdate(ctx, true, &model.Gateway{}, gatewayPreHooks...)
+	doUpdate(ctx, true, &model.Gateway{}, conf.RESOURCE_GATEWAY, gatewayPreHooks...)
 }
 
 // GetGateways godoc
@@ -135,7 +135,7 @@ func (c *Controller) GetGateways(ctx *gin.Context) {
 	currentUser, _ := acl.GetSessionFromCtx(ctx)
 	info := cast.ToBool(ctx.Query("info"))
 
-	db := mysql.DB.Model(&model.Gateway{})
+	db := mysql.DB.Model(model.DefaultGateway)
 	db = filterEqual(ctx, db, "id", "type")
 	db = filterLike(ctx, db, "name")
 	db = filterSearch(ctx, db, "name", "host", "account", "port")
@@ -144,30 +144,20 @@ func (c *Controller) GetGateways(ctx *gin.Context) {
 	}
 
 	if info && !acl.IsAdmin(currentUser) {
-		rs := make([]*acl.Resource, 0)
-		rs, err := acl.GetRoleResources(ctx, currentUser.Acl.Rid, acl.GetResourceTypeName(conf.RESOURCE_AUTHORIZATION))
+		assetIds, err := GetAssetIdsByAuthorization(ctx)
 		if err != nil {
-			handleRemoteErr(ctx, err)
+			ctx.AbortWithError(http.StatusInternalServerError, &ApiError{Code: ErrInternal, Data: map[string]any{"err": err}})
 			return
 		}
 		sub := mysql.DB.
-			Model(&model.Authorization{}).
-			Select("DISTINCT asset_id").
-			Where("resource_id IN ?", lo.Map(rs, func(r *acl.Resource, _ int) int { return r.ResourceId }))
-		ids := make([]int, 0)
-		if err = mysql.DB.
-			Model(&model.Asset{}).
-			Where("id IN (?)", sub).
-			Distinct().
-			Pluck("gateway_id", &ids).
-			Error; err != nil {
-			ctx.AbortWithError(http.StatusInternalServerError, &ApiError{Code: ErrInternal, Data: map[string]any{"err": err}})
-		}
+			Model(model.DefaultAsset).
+			Select("DISTINCT gateway_id").
+			Where("asset_id IN ?", assetIds)
 
-		db = db.Where("id IN ?", ids)
+		db = db.Where("id IN ?", sub)
 	}
 
 	db = db.Order("name")
 
-	doGet(ctx, !info, db, acl.GetResourceTypeName(conf.RESOURCE_GATEWAY), gatewayPostHooks...)
+	doGet(ctx, !info, db, conf.RESOURCE_GATEWAY, gatewayPostHooks...)
 }

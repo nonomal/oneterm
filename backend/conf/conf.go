@@ -8,6 +8,7 @@ import (
 )
 
 const (
+	RESOURCE_NODE          = "node"
 	RESOURCE_ACCOUNT       = "account"
 	RESOURCE_ASSET         = "asset"
 	RESOURCE_COMMAND       = "command"
@@ -16,6 +17,8 @@ const (
 )
 
 var (
+	PermResource = []string{RESOURCE_NODE, RESOURCE_ACCOUNT, RESOURCE_ASSET, RESOURCE_COMMAND, RESOURCE_GATEWAY}
+
 	Cfg = &ConfigYaml{
 		Mode: "debug",
 		Http: HttpConfig{
@@ -30,9 +33,6 @@ var (
 			Compress:      true,
 			Path:          "app.log",
 			ConsoleEnable: true,
-		},
-		Auth: Auth{
-			Custom: map[string]string{},
 		},
 	}
 )
@@ -54,6 +54,7 @@ func init() {
 	if err = viper.Unmarshal(Cfg); err != nil {
 		panic(fmt.Sprintf("parse config from config.yaml failed:%s", err))
 	}
+
 }
 
 type HttpConfig struct {
@@ -80,10 +81,14 @@ type KV struct {
 }
 
 type AclConfig struct {
-	Url           string `yaml:"url"`
-	AppId         string `yaml:"appId"`
-	SecretKey     string `yaml:"secretKey"`
-	ResourceNames []*KV  `yaml:"resourceNames"`
+	Url       string `yaml:"url"`
+	AppId     string `yaml:"appId"`
+	SecretKey string `yaml:"secretKey"`
+}
+
+type AesConfig struct {
+	Key string `yaml:"key"`
+	Iv  string `yaml:"iv"`
 }
 
 type LogConfig struct {
@@ -104,8 +109,8 @@ type LogConfig struct {
 }
 
 type Auth struct {
-	Acl    *AclConfig        `yaml:"acl"`
-	Custom map[string]string `yaml:"custom"`
+	Acl AclConfig `yaml:"acl"`
+	Aes AesConfig `yaml:"aes"`
 }
 
 type SshConfig struct {
@@ -130,14 +135,4 @@ type ConfigYaml struct {
 	Ssh       SshConfig   `yaml:"ssh"`
 	Auth      Auth        `yaml:"auth"`
 	SecretKey string      `yaml:"secretKey"`
-}
-
-func GetResourceTypeName(key string) (val string) {
-	for _, kv := range Cfg.Auth.Acl.ResourceNames {
-		if kv.Key == key {
-			val = kv.Value
-			return
-		}
-	}
-	return
 }

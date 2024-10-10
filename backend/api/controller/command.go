@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"regexp"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -18,11 +19,22 @@ import (
 )
 
 var (
+	commandPreHooks = []preHook[*model.Command]{
+		func(ctx *gin.Context, data *model.Command) {
+			if !data.IsRe {
+				return
+			}
+			_, err := regexp.Compile(data.Cmd)
+			if err != nil {
+				ctx.AbortWithError(http.StatusBadRequest, &ApiError{Code: ErrBadRequest, Data: map[string]any{"err": err}})
+			}
+		},
+	}
 	commandDcs = []deleteCheck{
 		func(ctx *gin.Context, id int) {
 			assetName := ""
 			err := mysql.DB.
-				Model(&model.Asset{}).
+				Model(model.DefaultAsset).
 				Select("name").
 				Where(fmt.Sprintf("JSON_CONTAINS(cmd_ids, '%d')", id)).
 				First(&assetName).
@@ -44,7 +56,7 @@ var (
 //	@Success	200		{object}	HttpResponse
 //	@Router		/command [post]
 func (c *Controller) CreateCommand(ctx *gin.Context) {
-	doCreate(ctx, true, &model.Command{}, conf.RESOURCE_COMMAND)
+	doCreate(ctx, true, &model.Command{}, conf.RESOURCE_COMMAND, commandPreHooks...)
 }
 
 // DeleteCommand godoc
@@ -54,7 +66,7 @@ func (c *Controller) CreateCommand(ctx *gin.Context) {
 //	@Success	200	{object}	HttpResponse
 //	@Router		/command/:id [delete]
 func (c *Controller) DeleteCommand(ctx *gin.Context) {
-	doDelete(ctx, true, &model.Command{}, commandDcs...)
+	doDelete(ctx, true, &model.Command{}, conf.RESOURCE_COMMAND, commandDcs...)
 }
 
 // UpdateCommand godoc
@@ -65,7 +77,7 @@ func (c *Controller) DeleteCommand(ctx *gin.Context) {
 //	@Success	200		{object}	HttpResponse
 //	@Router		/command/:id [put]
 func (c *Controller) UpdateCommand(ctx *gin.Context) {
-	doUpdate(ctx, true, &model.Command{})
+	doUpdate(ctx, true, &model.Command{}, conf.RESOURCE_COMMAND, commandPreHooks...)
 }
 
 // GetCommands godoc
@@ -96,7 +108,7 @@ func (c *Controller) GetCommands(ctx *gin.Context) {
 
 	if info && !acl.IsAdmin(currentUser) {
 		//rs := make([]*acl.Resource, 0)
-		rs, err := acl.GetRoleResources(ctx, currentUser.Acl.Rid, acl.GetResourceTypeName(conf.RESOURCE_AUTHORIZATION))
+		rs, err := acl.GetRoleResources(ctx, currentUser.Acl.Rid, conf.RESOURCE_AUTHORIZATION)
 		if err != nil {
 			handleRemoteErr(ctx, err)
 			return
@@ -107,7 +119,7 @@ func (c *Controller) GetCommands(ctx *gin.Context) {
 			Where("resource_id IN ?", lo.Map(rs, func(r *acl.Resource, _ int) int { return r.ResourceId }))
 		cmdIds := make([]model.Slice[int], 0)
 		if err = mysql.DB.
-			Model(&model.Asset{}).
+			Model(model.DefaultAsset).
 			Select("cmd_ids").
 			Where("id IN (?)", sub).
 			Find(&cmdIds).
@@ -125,5 +137,5 @@ func (c *Controller) GetCommands(ctx *gin.Context) {
 
 	db = db.Order("name")
 
-	doGet[*model.Command](ctx, !info, db, acl.GetResourceTypeName(conf.RESOURCE_COMMAND))
+	doGet[*model.Command](ctx, !info, db, conf.RESOURCE_COMMAND)
 }

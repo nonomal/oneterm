@@ -356,25 +356,43 @@
                 }
             }
         },
-        "/asset/query_by_server": {
+        "/authorization": {
             "get": {
                 "tags": [
-                    "asset"
+                    "authorization"
                 ],
                 "parameters": [
                     {
                         "type": "integer",
-                        "description": "page index",
+                        "description": "page_index",
                         "name": "page_index",
                         "in": "query",
                         "required": true
                     },
                     {
                         "type": "integer",
-                        "description": "page size",
+                        "description": "page_size",
                         "name": "page_size",
                         "in": "query",
                         "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "node id",
+                        "name": "node_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "asset id",
+                        "name": "asset_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "account id",
+                        "name": "account_id",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -399,7 +417,7 @@
                                                         "list": {
                                                             "type": "array",
                                                             "items": {
-                                                                "$ref": "#/definitions/model.Asset"
+                                                                "$ref": "#/definitions/model.Account"
                                                             }
                                                         }
                                                     }
@@ -412,33 +430,44 @@
                         }
                     }
                 }
+            },
+            "post": {
+                "tags": [
+                    "authorization"
+                ],
+                "parameters": [
+                    {
+                        "description": "authorization",
+                        "name": "authorization",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/model.Authorization"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/controller.HttpResponse"
+                        }
+                    }
+                }
             }
         },
-        "/asset/update_by_server": {
-            "put": {
+        "/authorization/:id": {
+            "delete": {
                 "tags": [
-                    "asset"
+                    "authorization"
                 ],
                 "parameters": [
                     {
                         "type": "integer",
-                        "description": "asset id",
+                        "description": "authorization id",
                         "name": "id",
                         "in": "path",
                         "required": true
-                    },
-                    {
-                        "description": "asset update request",
-                        "name": "req",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "object",
-                                "additionalProperties": true
-                            }
-                        }
                     }
                 ],
                 "responses": {
@@ -690,53 +719,6 @@
             }
         },
         "/connect/:asset_id/:account_id/:protocol": {
-            "post": {
-                "tags": [
-                    "connect"
-                ],
-                "parameters": [
-                    {
-                        "type": "integer",
-                        "description": "width",
-                        "name": "w",
-                        "in": "query"
-                    },
-                    {
-                        "type": "integer",
-                        "description": "height",
-                        "name": "h",
-                        "in": "query"
-                    },
-                    {
-                        "type": "integer",
-                        "description": "dpi",
-                        "name": "dpi",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/controller.HttpResponse"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "data": {
-                                            "$ref": "#/definitions/session.Session"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    }
-                }
-            }
-        },
-        "/connect/:session_id": {
             "get": {
                 "tags": [
                     "connect"
@@ -759,13 +741,6 @@
                         "description": "dpi",
                         "name": "dpi",
                         "in": "query"
-                    },
-                    {
-                        "type": "integer",
-                        "description": "session id",
-                        "name": "session_id",
-                        "in": "path",
-                        "required": true
                     }
                 ],
                 "responses": {
@@ -1719,31 +1694,6 @@
                 }
             }
         },
-        "/public_key/auth": {
-            "post": {
-                "tags": [
-                    "public_key"
-                ],
-                "parameters": [
-                    {
-                        "description": "method 1password 2publickey",
-                        "name": "req",
-                        "in": "body",
-                        "schema": {
-                            "$ref": "#/definitions/model.ReqAuth"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/controller.HttpResponse"
-                        }
-                    }
-                }
-            }
-        },
         "/session": {
             "get": {
                 "tags": [
@@ -1839,30 +1789,6 @@
                                     }
                                 }
                             ]
-                        }
-                    }
-                }
-            },
-            "post": {
-                "tags": [
-                    "session"
-                ],
-                "parameters": [
-                    {
-                        "description": "session",
-                        "name": "sessino",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/model.Session"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/controller.HttpResponse"
                         }
                     }
                 }
@@ -2072,6 +1998,207 @@
                         "name": "session_id",
                         "in": "path",
                         "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/controller.HttpResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/share": {
+            "get": {
+                "tags": [
+                    "share"
+                ],
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "page_index",
+                        "name": "page_index",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "page_size",
+                        "name": "page_size",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "name or ip",
+                        "name": "search",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "start, RFC3339",
+                        "name": "start",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "end, RFC3339",
+                        "name": "end",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "asset id",
+                        "name": "asset_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "account id",
+                        "name": "account_id",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/controller.HttpResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "allOf": [
+                                                {
+                                                    "$ref": "#/definitions/controller.ListData"
+                                                },
+                                                {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "list": {
+                                                            "type": "array",
+                                                            "items": {
+                                                                "$ref": "#/definitions/model.Share"
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            ]
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            },
+            "post": {
+                "tags": [
+                    "share"
+                ],
+                "parameters": [
+                    {
+                        "description": "share",
+                        "name": "share",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/model.Share"
+                            }
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/controller.HttpResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "allOf": [
+                                                {
+                                                    "$ref": "#/definitions/controller.ListData"
+                                                },
+                                                {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "list": {
+                                                            "type": "array",
+                                                            "items": {
+                                                                "type": "string"
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            ]
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        "/share/:id": {
+            "delete": {
+                "tags": [
+                    "share"
+                ],
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "share id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/controller.HttpResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/share/connect/:uuid": {
+            "get": {
+                "tags": [
+                    "share"
+                ],
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "width",
+                        "name": "w",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "height",
+                        "name": "h",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "dpi",
+                        "name": "dpi",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -2439,9 +2566,6 @@
                 "authorization": {
                     "$ref": "#/definitions/model.Map-int-model_Slice-int"
                 },
-                "ci_id": {
-                    "type": "integer"
-                },
                 "comment": {
                     "type": "string"
                 },
@@ -2489,14 +2613,49 @@
                 }
             }
         },
+        "model.Authorization": {
+            "type": "object",
+            "properties": {
+                "account_id": {
+                    "type": "integer"
+                },
+                "asset_id": {
+                    "type": "integer"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "creator_id": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "node_id": {
+                    "type": "integer"
+                },
+                "resource_id": {
+                    "type": "integer"
+                },
+                "rids": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "updater_id": {
+                    "type": "integer"
+                }
+            }
+        },
         "model.Command": {
             "type": "object",
             "properties": {
-                "cmds": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
+                "cmd": {
+                    "type": "string"
                 },
                 "created_at": {
                     "type": "string"
@@ -2509,6 +2668,9 @@
                 },
                 "id": {
                     "type": "integer"
+                },
+                "is_re": {
+                    "type": "boolean"
                 },
                 "name": {
                     "type": "string"
@@ -2536,6 +2698,12 @@
                 "id": {
                     "type": "integer"
                 },
+                "rdp_config": {
+                    "$ref": "#/definitions/model.RdpConfig"
+                },
+                "ssh_config": {
+                    "$ref": "#/definitions/model.SshConfig"
+                },
                 "timeout": {
                     "type": "integer"
                 },
@@ -2544,6 +2712,9 @@
                 },
                 "updater_id": {
                     "type": "integer"
+                },
+                "vnc_config": {
+                    "$ref": "#/definitions/model.VncConfig"
                 }
             }
         },
@@ -2642,12 +2813,6 @@
             "type": "object",
             "additionalProperties": {}
         },
-        "model.Map-string-string": {
-            "type": "object",
-            "additionalProperties": {
-                "type": "string"
-            }
-        },
         "model.Node": {
             "type": "object",
             "properties": {
@@ -2691,9 +2856,6 @@
                         "type": "string"
                     }
                 },
-                "sync": {
-                    "$ref": "#/definitions/model.Sync"
-                },
                 "updated_at": {
                     "type": "string"
                 },
@@ -2714,9 +2876,6 @@
                 },
                 "id": {
                     "type": "integer"
-                },
-                "mac": {
-                    "type": "string"
                 },
                 "name": {
                     "type": "string"
@@ -2752,20 +2911,14 @@
                 }
             }
         },
-        "model.ReqAuth": {
+        "model.RdpConfig": {
             "type": "object",
             "properties": {
-                "method": {
-                    "type": "integer"
+                "copy": {
+                    "type": "boolean"
                 },
-                "password": {
-                    "type": "string"
-                },
-                "pk": {
-                    "type": "string"
-                },
-                "username": {
-                    "type": "string"
+                "paste": {
+                    "type": "boolean"
                 }
             }
         },
@@ -2817,6 +2970,9 @@
                 "session_type": {
                     "type": "integer"
                 },
+                "share_id": {
+                    "type": "integer"
+                },
                 "status": {
                     "type": "integer"
                 },
@@ -2862,6 +3018,61 @@
                 },
                 "name": {
                     "type": "string"
+                }
+            }
+        },
+        "model.Share": {
+            "type": "object",
+            "properties": {
+                "account_id": {
+                    "type": "integer"
+                },
+                "asset_id": {
+                    "type": "integer"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "creator_id": {
+                    "type": "integer"
+                },
+                "end": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "no_limit": {
+                    "type": "boolean"
+                },
+                "protocol": {
+                    "type": "string"
+                },
+                "start": {
+                    "type": "string"
+                },
+                "times": {
+                    "type": "integer"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "updater_id": {
+                    "type": "integer"
+                },
+                "uuid": {
+                    "type": "string"
+                }
+            }
+        },
+        "model.SshConfig": {
+            "type": "object",
+            "properties": {
+                "copy": {
+                    "type": "boolean"
+                },
+                "paste": {
+                    "type": "boolean"
                 }
             }
         },
@@ -2954,85 +3165,14 @@
                 }
             }
         },
-        "model.Sync": {
+        "model.VncConfig": {
             "type": "object",
             "properties": {
-                "enable": {
+                "copy": {
                     "type": "boolean"
                 },
-                "filters": {
-                    "type": "string"
-                },
-                "frequency": {
-                    "type": "number"
-                },
-                "mapping": {
-                    "$ref": "#/definitions/model.Map-string-string"
-                },
-                "type_id": {
-                    "type": "integer"
-                }
-            }
-        },
-        "session.Session": {
-            "type": "object",
-            "properties": {
-                "account_id": {
-                    "type": "integer"
-                },
-                "account_info": {
-                    "type": "string"
-                },
-                "asset_id": {
-                    "type": "integer"
-                },
-                "asset_info": {
-                    "type": "string"
-                },
-                "client_ip": {
-                    "type": "string"
-                },
-                "closed_at": {
-                    "type": "string"
-                },
-                "cmd_count": {
-                    "type": "integer"
-                },
-                "created_at": {
-                    "type": "string"
-                },
-                "duration": {
-                    "type": "integer"
-                },
-                "gateway_id": {
-                    "type": "integer"
-                },
-                "gateway_info": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "integer"
-                },
-                "protocol": {
-                    "type": "string"
-                },
-                "session_id": {
-                    "type": "string"
-                },
-                "session_type": {
-                    "type": "integer"
-                },
-                "status": {
-                    "type": "integer"
-                },
-                "uid": {
-                    "type": "integer"
-                },
-                "updated_at": {
-                    "type": "string"
-                },
-                "user_name": {
-                    "type": "string"
+                "paste": {
+                    "type": "boolean"
                 }
             }
         }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/samber/lo"
 	"github.com/spf13/cast"
 	"golang.org/x/sync/errgroup"
 
@@ -11,14 +12,23 @@ import (
 	"github.com/veops/oneterm/remote"
 )
 
+const (
+	kFmtResources = "resource-%s-%d"
+)
+
 func GetRoleResources(ctx context.Context, rid int, resourceTypeId string) (res []*Resource, err error) {
+	// k := fmt.Sprintf(kFmtResources, resourceTypeId, rid)
+	// if err = redis.Get(ctx, k, &res); err == nil {
+	// 	return
+	// }
+
 	token, err := remote.GetAclToken(ctx)
 	if err != nil {
 		return
 	}
 
 	data := &ResourceResult{}
-	url := fmt.Sprintf("%v/acl/roles/%v/resources", conf.Cfg.Auth.Acl.Url, rid)
+	url := fmt.Sprintf("%s/acl/roles/%d/resources", conf.Cfg.Auth.Acl.Url, rid)
 	resp, err := remote.RC.R().
 		SetHeader("App-Access-Token", token).
 		SetQueryParams(map[string]string{
@@ -34,10 +44,22 @@ func GetRoleResources(ctx context.Context, rid int, resourceTypeId string) (res 
 
 	res = data.Resources
 
+	// redis.SetEx(ctx, k, res, time.Minute)
+
 	return
 }
 
-func HasPermission(ctx context.Context, rid int, resourceName, resourceTypeName, permission string) (res bool, err error) {
+func GetRoleResourceIds(ctx context.Context, rid int, resourceTypeId string) (ids []int, err error) {
+	res, err := GetRoleResources(ctx, rid, resourceTypeId)
+	if err != nil {
+		return
+	}
+
+	ids = lo.Map(res, func(r *Resource, _ int) int { return r.ResourceId })
+	return
+}
+
+func HasPermission(ctx context.Context, rid int, resourceTypeName string, resourceId int, permission string) (res bool, err error) {
 	token, err := remote.GetAclToken(ctx)
 	if err != nil {
 		return false, err
@@ -49,7 +71,7 @@ func HasPermission(ctx context.Context, rid int, resourceName, resourceTypeName,
 		SetHeader("App-Access-Token", token).
 		SetQueryParams(map[string]string{
 			"rid":                cast.ToString(rid),
-			"resource_name":      resourceName,
+			"resource_id":        cast.ToString(resourceId),
 			"resource_type_name": resourceTypeName,
 			"perm":               permission,
 		}).
@@ -62,6 +84,7 @@ func HasPermission(ctx context.Context, rid int, resourceName, resourceTypeName,
 	if v, ok := data["result"]; ok {
 		res = v.(bool)
 	}
+
 	return
 }
 

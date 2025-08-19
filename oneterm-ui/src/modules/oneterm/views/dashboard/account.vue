@@ -40,6 +40,11 @@ export default {
           },
           yAxis: {
             type: 'value',
+            splitLine: {
+              lineStyle: {
+                width: 0.5,
+              }
+            }
           },
           tooltip: {
             trigger: 'axis',
@@ -56,6 +61,7 @@ export default {
               data: data.map((item) => item.count),
               type: 'bar',
               color: '#84A4F9',
+              barMaxWidth: '16px'
             },
           ],
         }

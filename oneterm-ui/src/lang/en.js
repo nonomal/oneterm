@@ -10,6 +10,7 @@ export default {
         resourceType: 'Resource Types',
         trigger: 'Triggers',
     },
+    settings: 'Common Settings',
     screen: 'Big Screen',
     dashboard: 'Dashboard',
     admin: 'Admin',
@@ -107,8 +108,29 @@ export default {
     visual: 'Visual',
     default: 'default',
     tip: 'Tip',
+    requestError: 'An error occurred, please try again later',
+    requestServiceError: 'Unknown error on the server, please contact the administrator',
+    requestWait: 'The modification has been submitted, please wait for review ({time} seconds)',
+    requestContact: 'For use with cmdb, please contact VE official bd@veops.cn',
+    documentCenter: 'Document Center',
+    exception: {
+        backToHome: 'Back to home page',
+        desc1: 'Sorry, you are not authorized to access this page',
+        desc2: 'Sorry, the page you are visiting does not exist or is still under development',
+        desc3: 'Sorry, server error'
+    },
     pagination: {
         total: '{range0}-{range1} of {total} items'
+    },
+    components: {
+        colorTagSelectTip: 'Enter or select tags',
+        database: 'Database',
+        system: 'System',
+        language: 'Language',
+        status: 'Status',
+        commonComponent: 'Common Component',
+        data: 'Data',
+        cloud: 'Cloud'
     },
     topMenu: {
         personalCenter: 'My Profile',
@@ -172,11 +194,20 @@ export default {
         landline: 'landline',
         zipCode: 'zip code',
         IDCard: 'ID card',
-        ip: 'IP',
+        ip: 'IPv4',
         email: 'email',
         link: 'link',
         monetaryAmount: 'monetary amount',
         custom: 'custom',
+    },
+    userPanel: {
+      myProfile: 'My Profile',
+      accountPassword: 'Password',
+      notice: 'Notice',
+      switchLanguage: 'Switch Language',
+      bindAccount: 'Bind Account',
+      switchAccount: 'Switch Account',
+      logout: 'Logout'
     },
     cs: cs_en,
     acl: acl_en,

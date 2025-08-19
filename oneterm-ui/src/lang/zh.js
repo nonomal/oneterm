@@ -10,6 +10,7 @@ export default {
         resourceType: '资源类型',
         trigger: '触发器',
     },
+    settings: '通用设置',
     screen: '大屏',
     dashboard: '仪表盘',
     admin: '管理员',
@@ -107,8 +108,29 @@ export default {
     visual: '虚拟',
     default: '默认',
     tip: '提示',
+    requestError: '出现错误，请稍后再试',
+    requestServiceError: '服务端未知错误, 请联系管理员！',
+    requestWait: '修改已提交，请等待审核（{time}s）',
+    requestContact: '如需联动cmdb使用，请联系维易官方bd@veops.cn',
+    documentCenter: '文档中心',
+    exception: {
+        backToHome: '返回首页',
+        desc1: '抱歉，你无权访问该页面',
+        desc2: '抱歉，你访问的页面不存在或仍在开发中',
+        desc3: '抱歉，服务器出错了'
+    },
     pagination: {
         total: '当前展示 {range0}-{range1} 条数据， 共 {total} 条'
+    },
+    components: {
+        colorTagSelectTip: '选择或输入（回车确定）标签',
+        database: '数据库',
+        system: '操作系统',
+        language: '语言',
+        status: '状态',
+        commonComponent: '常用组件',
+        data: '数据',
+        cloud: '云'
     },
     topMenu: {
         personalCenter: '个人中心',
@@ -172,11 +194,20 @@ export default {
         landline: '座机',
         zipCode: '邮政编码',
         IDCard: '身份证号',
-        ip: 'IP地址',
+        ip: 'IPv4地址',
         email: '邮箱',
         link: '链接',
         monetaryAmount: '货币金额',
         custom: '自定义',
+    },
+    userPanel: {
+      myProfile: '个人中心',
+      accountPassword: '账号密码',
+      notice: '通知中心',
+      switchLanguage: '切换语言',
+      bindAccount: '绑定账号',
+      switchAccount: '切换账号',
+      logout: '退出账号'
     },
     cs: cs_zh,
     acl: acl_zh,

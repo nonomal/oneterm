@@ -30,7 +30,7 @@
       <a-col>
         <a-select
           size="small"
-          :style="{ width: '90px' }"
+          :style="{ width: '110px' }"
           :value="speed"
           @change="
             (value) => {
@@ -44,16 +44,16 @@
           "
         >
           <a-select-option :value="1">
-            1倍速
+            {{ $t('oneterm.guacamole.speed1') }}
           </a-select-option>
           <a-select-option :value="1.25">
-            1.25倍速
+            {{ $t('oneterm.guacamole.speed2') }}
           </a-select-option>
           <a-select-option :value="1.5">
-            1.5倍速
+            {{ $t('oneterm.guacamole.speed3') }}
           </a-select-option>
           <a-select-option :value="2">
-            2倍速
+            {{ $t('oneterm.guacamole.speed4') }}
           </a-select-option>
         </a-select>
       </a-col>
@@ -142,7 +142,7 @@ export default {
     },
     handlePlayPause() {
       if (this.percent === this.max) {
-        // 重播
+        // replay
         this.percent = 0
         this.recording.seek(0, () => {
           this.recording.play()
@@ -155,7 +155,7 @@ export default {
       } else {
         this.recording.pause()
         this.stopSpeedUp()
-        this.$message.info('暂停')
+        this.$message.info(this.$t('oneterm.guacamole.pause'))
       }
     },
     startSpeedUp() {

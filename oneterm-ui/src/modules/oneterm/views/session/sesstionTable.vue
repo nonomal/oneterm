@@ -79,7 +79,7 @@
           </vxe-column>
           <vxe-column :title="$t(`operation`)" width="100" align="center">
             <template #default="{row}">
-              <a-space>
+              <a-space v-if="!['https', 'http'].includes(row.protocolType)">
                 <template v-if="status === 2">
                   <a-tooltip :title="$t('oneterm.sessionTable.replay')">
                     <a @click="openReplay(row)"><ops-icon type="oneterm-playback"/></a>
@@ -87,11 +87,11 @@
                   <a-tooltip :title="$t('download')">
                     <a :href="`/api/oneterm/v1/session/replay/${row.session_id}`"><a-icon type="download"/></a>
                   </a-tooltip>
-                  <a-tooltip :title="$t('oneterm.menu.commandRecord')">
-                    <a @click="openDetail(row)"><ops-icon type="oneterm-commandrecord"/></a>
+                  <a-tooltip v-if="!['rdp', 'vnc'].includes(row.protocolType)" :title="$t('oneterm.menu.commandRecord')">
+                    <a @click="openDetail(row)"><ops-icon type="oneterm-command_record"/></a>
                   </a-tooltip>
                 </template>
-                <template v-else>
+                <template v-else-if="status === 1">
                   <a-tooltip :title="$t('oneterm.sessionTable.monitor')">
                     <a @click="openMonitor(row)"><a-icon type="eye"/></a>
                   </a-tooltip>
@@ -137,6 +137,7 @@ import { mapState } from 'vuex'
 import { getSessionList } from '../../api/session'
 import SessionDetailTable from './sessionDetailTable.vue'
 import { closeConnect } from '../../api/connect'
+import { initMessageStorageKey } from '@/modules/oneterm/views/connect/terminal/index.vue'
 
 export default {
   name: 'SessionTable',
@@ -184,7 +185,13 @@ export default {
         status: this.status,
       })
         .then((res) => {
-          this.tableData = res?.data?.list || []
+          const tableData = res?.data?.list || []
+          tableData.forEach((item) => {
+            const protocolType = item?.protocol?.split(':')?.[0] || ''
+            item.protocolType = protocolType
+          })
+          this.tableData = tableData
+
           this.tablePage = {
             ...this.tablePage,
             currentPage,
@@ -240,11 +247,53 @@ export default {
       if (row.protocol.includes('rdp') || row.protocol.includes('vnc')) {
         const { asset_id, account_id, protocol } = row
         window.open(
-          `/oneterm/guacamole/${asset_id}/${account_id}/${protocol}?session_id=${row.session_id}&&is_monitor=true`,
+          `/oneterm/guacamole/${asset_id}/${account_id}/${protocol}?session_id=${row.session_id}&is_monitor=true`,
           '_blank'
         )
       } else {
-        window.open(`/oneterm/terminal?session_id=${row.session_id}&&is_monitor=true`, '_blank')
+        const dataList = [
+          {
+            key: this.$t(`user`),
+            value: row?.user_name || ''
+          },
+          {
+            key: this.$t(`oneterm.asset`),
+            value: row?.asset_info || ''
+          },
+          {
+            key: this.$t(`oneterm.gateway`),
+            value: row?.gateway_info || ''
+          },
+          {
+            key: this.$t(`oneterm.account`),
+            value: row?.account_info || ''
+          },
+          {
+            key: this.$t(`oneterm.protocol`),
+            value: row?.protocol || ''
+          },
+          {
+            key: this.$t(`oneterm.sessionTable.clientIp`),
+            value: row?.client_ip || ''
+          }
+        ]
+
+        const message = dataList.map((item) => {
+          return `\x1b[38;2;138;226;52m${item.key}\x1b[38;2;110;172;218m: ${item.value}`
+        }).join('; ')
+
+        const data = [
+          ``,
+          `${message}\x1b[0m`,
+          ``
+        ]
+
+        localStorage.setItem(initMessageStorageKey, JSON.stringify({
+          timestamp: new Date().getTime(),
+          data
+        }))
+
+        window.open(`/oneterm/terminal?session_id=${row.session_id}&is_monitor=true`, '_blank')
       }
     },
     disconnect(row) {

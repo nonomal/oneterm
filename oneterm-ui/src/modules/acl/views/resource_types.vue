@@ -63,7 +63,14 @@
         show-quick-jumper
         :current="tablePage.currentPage"
         :total="tablePage.total"
-        :show-total="(total, range) => `当前展示 ${range[0]}-${range[1]} 条数据, 共 ${total} 条`"
+        :show-total="
+          (total, range) =>
+            $t('pagination.total', {
+              range0: range[0],
+              range1: range[1],
+              total,
+            })
+        "
         :page-size="tablePage.pageSize"
         :default-current="1"
         :page-size-options="pageSizeOptions"
@@ -194,11 +201,11 @@ export default {
   background-color: #fff;
   height: calc(100vh - 64px);
   margin-bottom: -24px;
-  padding: 24px;
+  padding: 20px;
   .acl-resource-types-header {
     width: 100%;
     display: inline-flex;
-    margin-bottom: 15px;
+    margin-bottom: 20px;
     align-items: center;
   }
 }

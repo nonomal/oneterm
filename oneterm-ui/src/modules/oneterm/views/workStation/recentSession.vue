@@ -1,78 +1,95 @@
 <template>
-  <div class="recent-session">
-    <div class="recent-session-table">
-      <ops-table
-        :loading="loading"
-        size="mini"
-        ref="opsTable"
-        stripe
-        class="ops-stripe-table"
-        :data="tableData"
-        show-overflow
-        show-header-overflow
-        :row-config="{ keyField: 'id' }"
-        height="auto"
-        resizable
-      >
-        <vxe-column :title="$t(`oneterm.sessionTable.target`)" field="asset_info"> </vxe-column>
-        <vxe-column :title="$t(`oneterm.account`)" field="account_info"> </vxe-column>
-        <vxe-column :title="$t(`oneterm.sessionTable.clientIp`)" field="client_ip"> </vxe-column>
-        <vxe-column :title="$t(`oneterm.protocol`)" field="protocol"> </vxe-column>
-        <vxe-column :title="$t(`oneterm.workStation.loginTime`)" field="created_at">
-          <template #default="{row}">
-            {{ moment(row.created_at).format('YYYY-MM-DD HH:mm:ss') }}
-          </template>
-        </vxe-column>
-        <vxe-column :title="$t(`operation`)" width="80" align="center">
-          <template #default="{row}">
-            <a-space>
-              <a-tooltip :title="$t(`login`)">
-                <a @click="openTerminal(row)"><ops-icon type="oneterm-login"/></a>
-              </a-tooltip>
-              <a-tooltip :title="$t(`oneterm.switchAccount`)">
-                <a @click="openLogin(row)"><ops-icon type="oneterm-switch"/></a>
-              </a-tooltip>
-            </a-space>
-          </template>
-        </vxe-column>
-      </ops-table>
-    </div>
-    <div class="recent-session-pagination">
-      <a-pagination
-        size="small"
-        show-size-changer
-        :current="tablePage.currentPage"
-        :total="tablePage.totalResult"
-        :show-total="
-          (total, range) =>
-            $t('pagination.total', {
-              range0: range[0],
-              range1: range[1],
-              total,
-            })
-        "
-        :page-size="tablePage.pageSize"
-        :default-current="1"
-        @change="pageOrSizeChange"
-        @showSizeChange="pageOrSizeChange"
+  <CustomDrawer
+    :visible="visible"
+    :title="$t('oneterm.workStation.recentSession')"
+    width="920px"
+    :bodyStyle="{
+      height: '100%'
+    }"
+    :zIndex="1003"
+    @close="handleCancel"
+  >
+    <div class="recent-session">
+      <div class="recent-session-table">
+        <ops-table
+          :loading="loading"
+          size="mini"
+          ref="opsTable"
+          stripe
+          class="ops-stripe-table"
+          :data="tableData"
+          show-overflow
+          show-header-overflow
+          :row-config="{ keyField: 'id' }"
+          height="auto"
+          resizable
+        >
+          <vxe-column :title="$t(`oneterm.sessionTable.target`)" field="asset_info"> </vxe-column>
+          <vxe-column :title="$t(`oneterm.account`)" field="account_info"> </vxe-column>
+          <vxe-column :title="$t(`oneterm.sessionTable.clientIp`)" field="client_ip"> </vxe-column>
+          <vxe-column :title="$t(`oneterm.protocol`)" field="protocol"> </vxe-column>
+          <vxe-column :title="$t(`oneterm.workStation.loginTime`)" field="created_at">
+            <template #default="{row}">
+              {{ moment(row.created_at).format('YYYY-MM-DD HH:mm:ss') }}
+            </template>
+          </vxe-column>
+          <vxe-column :title="$t(`operation`)" width="80" align="center">
+            <template #default="{row}">
+              <a-space>
+                <a-tooltip :title="row.protocolType">
+                  <a @click="openTerminal(row)"><ops-icon :type="row.protocolIcon"/></a>
+                </a-tooltip>
+                <a-tooltip v-if="showSwitchAccount(row)" :title="$t(`oneterm.switchAccount`)">
+                  <a @click="openLogin(row)"><ops-icon type="oneterm-switch"/></a>
+                </a-tooltip>
+              </a-space>
+            </template>
+          </vxe-column>
+        </ops-table>
+      </div>
+      <div class="recent-session-pagination">
+        <a-pagination
+          size="small"
+          show-size-changer
+          :current="tablePage.currentPage"
+          :total="tablePage.totalResult"
+          :show-total="
+            (total, range) =>
+              $t('pagination.total', {
+                range0: range[0],
+                range1: range[1],
+                total,
+              })
+          "
+          :page-size="tablePage.pageSize"
+          :default-current="1"
+          @change="pageOrSizeChange"
+          @showSizeChange="pageOrSizeChange"
+        />
+      </div>
+      <LoginModal
+        ref="loginModal"
+        @openTerminal="loginOpenTerminal"
       />
     </div>
-    <LoginModal ref="loginModal" />
-  </div>
+  </CustomDrawer>
 </template>
 
 <script>
 import moment from 'moment'
-import { mapGetters } from 'vuex'
-import { getSessionList } from '../../api/session'
-import { getAssetList } from '../../api/asset'
-import { postConnectIsRight } from '../../api/connect'
+import { mapGetters, mapState } from 'vuex'
+import { getSessionList } from '@/modules/oneterm/api/session'
+import { getAssetList } from '@/modules/oneterm/api/asset'
+import { PROTOCOL_ICON } from '@/modules/oneterm/views/assets/assets/protocol/constants'
+
 import LoginModal from '../assets/assets/loginModal.vue'
+
 export default {
   name: 'RecentSession',
   components: { LoginModal },
   data() {
     return {
+      visible: false,
       tableData: [],
       tablePage: {
         currentPage: 1,
@@ -84,12 +101,21 @@ export default {
   },
   computed: {
     ...mapGetters(['uid']),
-  },
-  mounted() {
-    this.updateTableData()
+    ...mapState({
+      rid: (state) => state.user.rid,
+      roles: (state) => state.user.roles,
+    })
   },
   methods: {
     moment,
+    open() {
+      this.visible = true
+      this.updateTableData()
+    },
+    handleCancel() {
+      this.visible = false
+      this.tableData = []
+    },
     updateTableData(currentPage = 1, pageSize = this.tablePage.pageSize) {
       this.loading = true
       getSessionList({
@@ -98,7 +124,14 @@ export default {
         uid: this.uid,
       })
         .then((res) => {
-          this.tableData = res?.data?.list || []
+          const tableData = res?.data?.list || []
+          tableData.forEach((item) => {
+            const protocolType = item.protocol.split?.(':')?.[0] || ''
+            item.protocolIcon = PROTOCOL_ICON?.[protocolType] || ''
+            item.protocolType = protocolType
+          })
+
+          this.tableData = tableData
           this.tablePage = {
             ...this.tablePage,
             currentPage,
@@ -113,30 +146,56 @@ export default {
     pageOrSizeChange(currentPage, pageSize) {
       this.updateTableData(currentPage, pageSize)
     },
-    openTerminal(row) {
-      postConnectIsRight(row.asset_id, row.account_id, row.protocol).then((res) => {
-        if (res?.data?.session_id) {
-          window.open(`/oneterm/terminal?session_id=${res?.data?.session_id}`, '_blank')
-        }
+    async openTerminal(row) {
+      const res = await getAssetList({
+        id: row.asset_id,
+        info: true
       })
+      const asset = (res?.data?.list || [])?.[0]
+
+      const protocolType = row.protocol.split?.(':')?.[0] || ''
+
+      this.$emit('openTerminal', {
+        assetId: row.asset_id,
+        assetName: asset?.name || row?.asset_info || '',
+        accountId: row.account_id,
+        protocol: row.protocol,
+        protocolType
+      })
+      this.handleCancel()
     },
+
     openLogin(row) {
-      getAssetList({ id: row.asset_id }).then((res) => {
-        const asset = (res?.data?.list || [])[0]
-        if (asset) {
-          this.$refs.loginModal.open(row.asset_id, asset.authorization, asset.protocols)
+      getAssetList({
+        id: row.asset_id,
+        info: true
+      }).then((res) => {
+        const asset = (res?.data?.list || [])?.[0]
+        const accountLength = Object.keys(asset?.authorization || {})?.length
+
+        if (accountLength) {
+          this.$refs.loginModal.open(row.asset_id, asset?.name || '', asset.authorization, asset.protocols)
         } else {
           this.$message.warning(this.$t('oneterm.sessionTable.loginMessage'))
         }
       })
     },
+
+    loginOpenTerminal(data) {
+      this.$emit('openTerminal', data)
+      this.handleCancel()
+    },
+
+    showSwitchAccount(row) {
+      return !['http', 'https'].includes(row?.protocolType)
+    }
   },
 }
 </script>
 
 <style lang="less" scoped>
 .recent-session {
-  padding: 10px;
+  height: 100%;
   .recent-session-table {
     height: calc(100% - 32.5px);
   }

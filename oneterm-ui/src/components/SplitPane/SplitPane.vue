@@ -66,6 +66,10 @@ export default {
       type: String,
       default: '#f7f8fa',
     },
+    calcBasedParent: {
+      type: Boolean,
+      defualt: false
+    }
   },
   data() {
     return {
@@ -95,7 +99,7 @@ export default {
     },
 
     paneLengthPercent() {
-      const clientRectWidth = this.parentContainer
+      const clientRectWidth = this.parentContainer && this.calcBasedParent
         ? this.parentContainer.clientWidth
         : document.documentElement.getBoundingClientRect().width
       return (this.paneLengthPixel / clientRectWidth) * 100
@@ -126,7 +130,7 @@ export default {
   },
 
   methods: {
-    // 按下滑动器
+    // press the slide button
     handleMouseDown(e) {
       document.addEventListener('mousemove', this.handleMouseMove)
       document.addEventListener('mouseup', this.handleMouseUp)
@@ -137,7 +141,7 @@ export default {
       }
     },
 
-    // 按下滑动器后移动鼠标
+    // move the mouse after pressing the slide button
     handleMouseMove(e) {
       this.isExpanded = false
       this.$emit('expand', this.isExpanded)
@@ -164,7 +168,7 @@ export default {
       localStorage.setItem(`${this.appName}-paneLengthPixel`, paneLengthPixel)
     },
 
-    // 松开滑动器
+    // release the slide button
     handleMouseUp() {
       document.removeEventListener('mousemove', this.handleMouseMove)
     },

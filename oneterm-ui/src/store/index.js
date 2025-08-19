@@ -1,5 +1,3 @@
-/* eslint-disable */
-
 import Vue from 'vue'
 import Vuex from 'vuex'
 import app from './global/app'
@@ -7,6 +5,7 @@ import user from './global/user'
 import routes from './global/routes'
 import notice from './global/notice'
 import getters from './global/getters'
+import company from './global/company'
 import appConfig from '@/config/app'
 
 Vue.use(Vuex)
@@ -16,7 +15,8 @@ const store = new Vuex.Store({
     app,
     user,
     routes,
-    notice
+    notice,
+    company
   },
   state: {
     windowWidth: 800,
@@ -51,11 +51,11 @@ const store = new Vuex.Store({
 })
 
 appConfig.buildModules.forEach(appName => {
-    import(`@/modules/${appName}/index.js`).then(m => {
-      if (m.default.store) {
-        store.registerModule(m.default.store.name || m.deault.name, m.default.store)
-      }
-    })
+  import(`@/modules/${appName}/index.js`).then(m => {
+    if (m.default.store) {
+      store.registerModule(m.default.store.name || m.deault.name, m.default.store)
+    }
+  })
 })
 
 export default store

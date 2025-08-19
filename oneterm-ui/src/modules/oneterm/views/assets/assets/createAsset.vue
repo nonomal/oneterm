@@ -1,5 +1,11 @@
 <template>
-  <CustomDrawer :closable="false" :visible="visible" width="1000px" :title="title">
+  <CustomDrawer
+    :closable="true"
+    :visible="visible"
+    width="1000px"
+    :title="title"
+    @close="visible = false"
+  >
     <p>
       <strong>{{ $t(`oneterm.baseInfo`) }}</strong>
     </p>
@@ -13,17 +19,15 @@
       <a-form-model-item :label="$t(`oneterm.name`)" prop="name">
         <a-input v-model="baseForm.name" :placeholder="`${$t(`placeholder1`)}`" />
       </a-form-model-item>
-      <a-form-model-item label="IP" prop="ip">
+      <a-form-model-item :label="$t('oneterm.assetList.ip')" prop="ip">
         <a-input v-model="baseForm.ip" :placeholder="`${$t(`placeholder1`)}`" />
       </a-form-model-item>
-      <a-form-model-item :label="$t(`oneterm.node`)" prop="parent_id">
+      <a-form-model-item :label="$t(`oneterm.folder`)" prop="parent_id">
         <treeselect
-          class="custom-treeselect custom-treeselect-bgcAndBorder"
+          class="custom-treeselect custom-treeselect-white"
           :style="{
             '--custom-height': '32px',
-            lineHeight: '32px',
-            '--custom-bg-color': '#fff',
-            '--custom-border': '1px solid #d9d9d9',
+            lineHeight: '32px'
           }"
           v-model="baseForm.parent_id"
           :multiple="false"
@@ -36,6 +40,7 @@
               return {
                 id: node.id,
                 label: node.name,
+                children: node.children && node.children.length ? node.children : undefined
               }
             }
           "
@@ -57,11 +62,18 @@
     <p>
       <strong>{{ $t(`oneterm.protocol`) }}</strong>
     </p>
-    <Protocol ref="protocol" />
+    <Protocol
+      ref="protocol"
+      @updateProtocols="(value) => protocolTypeList = value"
+    />
     <p>
       <strong>{{ $t(`oneterm.accountAuthorization`) }}</strong>
     </p>
-    <Account ref="account" />
+    <Account
+      ref="account"
+      resourceType="asset"
+      :protocolTypeList="protocolTypeList"
+    />
     <p>
       <strong>{{ $t(`oneterm.accessRestrictions`) }}</strong>
     </p>
@@ -82,11 +94,12 @@
 </template>
 
 <script>
-import Protocol from './protocol.vue'
+import { getNodeList } from '@/modules/oneterm/api/node'
+import { postAsset, putAssetById } from '@/modules/oneterm/api/asset'
+
+import Protocol from './protocol/index.vue'
 import Account from './account.vue'
 import AccessAuth from './accessAuth.vue'
-import { getNodeList } from '../../../api/node'
-import { postAsset, putAssetById } from '../../../api/asset'
 
 export default {
   name: 'CreateAsset',
@@ -105,9 +118,11 @@ export default {
       },
       baseRules: {
         name: [{ required: true, message: `${this.$t(`placeholder1`)}` }],
+        ip: [{ required: true, message: `${this.$t(`placeholder1`)}` }],
         parent_id: [{ required: true, message: `${this.$t(`placeholder2`)}` }],
       },
       nodeList: [],
+      protocolTypeList: []
     }
   },
   computed: {
@@ -123,7 +138,8 @@ export default {
       this.visible = true
       this.type = type
       getNodeList().then((res) => {
-        this.nodeList = res?.data?.list || []
+        const tree = this.formatTree(res?.data?.list || [])
+        this.nodeList = tree
       })
       this.$nextTick(() => {
         const {
@@ -134,8 +150,10 @@ export default {
           parent_id,
           gateway_id = undefined,
           protocols = [],
+          web_config,
           authorization = {},
-          access_auth = {},
+          access_time_control = {},
+          asset_command_control = {}
         } = asset ?? {}
         this.assetId = id
         this.baseForm = {
@@ -144,28 +162,60 @@ export default {
           comment,
           parent_id: parent_id || undefined,
         }
-        this.$refs.protocol.setValues({ gateway_id, protocols })
+        this.$refs.protocol.setValues({ gateway_id, protocols, web_config })
         this.$refs.account.setValues({ authorization })
-        this.$refs.accessAuth.setValues(access_auth)
+        this.$refs.accessAuth.setValues({
+          access_time_control,
+          asset_command_control
+        })
       })
     },
+
+    formatTree(data) {
+      const tree = []
+      const lookup = {}
+
+      data.forEach(item => {
+        lookup[item.id] = { ...item, children: [] }
+      })
+
+      data.forEach(item => {
+        if (item.parent_id === 0) {
+          tree.push(lookup[item.id])
+        } else if (lookup[item.parent_id]) {
+          lookup[item.parent_id].children.push(lookup[item.id])
+        }
+      })
+
+      return tree
+    },
+
     handleSubmit() {
       this.$refs.baseForm.validate((valid) => {
         if (valid) {
           const { name, ip, parent_id, comment } = this.baseForm
-          const { gateway_id, protocols } = this.$refs.protocol.getValues()
+          const { gateway_id, protocols, web_config } = this.$refs.protocol.getValues()
           const { authorization } = this.$refs.account.getValues()
-          const access_auth = this.$refs.accessAuth.getValues()
+          const { cmd_ids, template_ids, time_ranges, timezone } = this.$refs.accessAuth.getValues()
           const params = {
             name,
-            ip,
+            ip: ip?.trim?.() ?? '',
             comment,
             parent_id: parent_id ?? 0,
             protocols,
+            web_config,
             gateway_id,
             authorization,
-            access_auth,
+            access_time_control: {
+              time_ranges,
+              timezone
+            },
+            asset_command_control: {
+              cmd_ids,
+              template_ids
+            }
           }
+
           this.loading = true
           if (this.assetId) {
             putAssetById(this.assetId, { ...params, id: this.assetId })

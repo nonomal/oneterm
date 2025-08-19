@@ -1,7 +1,7 @@
 <template>
   <div class="ops-login">
     <div class="ops-login-left">
-      <span>维易科技<br />让运维更简单</span>
+      <span>{{ $t('cs.login.loginText') }}</span>
     </div>
     <div class="ops-login-right">
       <img src="../../assets/logo_oneterm.png" />
@@ -12,7 +12,7 @@
         @submit="handleSubmit"
         hideRequiredMark
         :colon="false">
-        <a-form-item label="用户名/邮箱">
+        <a-form-item :label="$t('cs.login.username')">
           <a-input
             size="large"
             type="text"
@@ -20,7 +20,10 @@
             v-decorator="[
               'username',
               {
-                rules: [{ required: true, message: '请输入用户名或邮箱' }, { validator: handleUsernameOrEmail }],
+                rules: [
+                  { required: true, message: $t('cs.login.usernameRequired') },
+                  { validator: handleUsernameOrEmail }
+                ],
                 validateTrigger: 'change',
               },
             ]"
@@ -28,19 +31,24 @@
           </a-input>
         </a-form-item>
 
-        <a-form-item label="密码">
+        <a-form-item :label="$t('cs.login.password')">
           <a-input
             size="large"
             type="password"
             autocomplete="false"
             class="ops-input"
-            v-decorator="['password', { rules: [{ required: true, message: '请输入密码' }], validateTrigger: 'blur' }]"
+            v-decorator="[
+              'password',
+              { rules: [{ required: true, message: $t('cs.login.passwordRequired') }], validateTrigger: 'blur' }
+            ]"
           >
           </a-input>
         </a-form-item>
 
         <a-form-item>
-          <a-checkbox v-decorator="['rememberMe', { valuePropName: 'checked' }]">自动登录</a-checkbox>
+          <a-checkbox v-decorator="['rememberMe', { valuePropName: 'checked' }]">
+            {{ $t('cs.login.autoLogin') }}
+          </a-checkbox>
         </a-form-item>
 
         <a-form-item style="margin-top:24px">
@@ -51,17 +59,21 @@
             class="login-button"
             :loading="state.loginBtn"
             :disabled="state.loginBtn"
-          >登录</a-button
           >
+            {{ $t('cs.login.loginBtn') }}
+          </a-button>
           <a-checkbox
-            v-if="enable_list && enable_list.length === 1 && enable_list[0].auth_type === 'LDAP'"
+            v-if="hasLDAP"
             v-model="auth_with_ldap"
-          >LDAP</a-checkbox
           >
+            LDAP
+          </a-checkbox>
         </a-form-item>
       </a-form>
       <template v-if="_enable_list && _enable_list.length >= 1">
-        <a-divider style="font-size:14px">其他登录方式</a-divider>
+        <a-divider style="font-size:14px">
+          {{ $t('cs.login.otherLoginWay') }}
+        </a-divider>
         <div style="text-align:center">
           <span v-for="(item, index) in _enable_list" :key="item.auth_type">
             <ops-icon :type="item.auth_type" />
@@ -104,21 +116,20 @@ export default {
   computed: {
     ...mapState({ auth_enable: (state) => state?.user?.auth_enable ?? {} }),
     enable_list() {
-      return this.auth_enable.enable_list ?? []
+      return this.auth_enable?.enable_list ?? []
+    },
+    hasLDAP() {
+      return this.enable_list.some((en) => en.auth_type === 'LDAP')
     },
     _enable_list() {
       return this.enable_list.filter((en) => en.auth_type !== 'LDAP')
     },
   },
   watch: {
-    enable_list: {
+    hasLDAP: {
       immediate: true,
       handler(newVal) {
-        if (newVal && newVal.length === 1 && newVal[0].auth_type === 'LDAP') {
-          this.auth_with_ldap = true
-        } else {
-          this.auth_with_ldap = false
-        }
+        this.auth_with_ldap = newVal
       },
     },
   },
@@ -142,7 +153,7 @@ export default {
     handleSubmit(e) {
       e.preventDefault()
       const {
-        enable_list,
+        hasLDAP,
         form: { validateFields },
         state,
         customActiveKey,
@@ -160,10 +171,7 @@ export default {
           delete loginParams.username
           loginParams.username = values.username
           loginParams.password = appConfig.useEncryption ? md5(values.password) : values.password
-          loginParams.auth_with_ldap =
-            enable_list && enable_list.length === 1 && enable_list[0].auth_type === 'LDAP'
-              ? Number(auth_with_ldap)
-              : undefined
+          loginParams.auth_with_ldap = hasLDAP ? Number(auth_with_ldap) : undefined
 
           localStorage.setItem('ops_auth_type', '')
           Login({ userInfo: loginParams })
@@ -183,11 +191,12 @@ export default {
     },
     loginSuccess(res) {
       this.$router.push({ path: this.$route.query?.redirect ?? '/' })
-      // 延迟 1 秒显示欢迎信息
+
+      // delayed welcome message
       setTimeout(() => {
         this.$notification.success({
-          message: '欢迎',
-          description: `${timeFix()}，欢迎回来`,
+          message: this.$t('cs.login.welcomeMessage'),
+          description: this.$t('cs.login.welcomeDesc', { name: timeFix() }),
         })
       }, 1000)
     },
@@ -216,12 +225,12 @@ export default {
       transform: translate(-50%, -50%);
     }
     > span {
-      color: white;
+      color: @text-color_2;
       position: absolute;
-      top: 10%;
+      bottom: 10%;
       left: 50%;
       transform: translateX(-50%);
-      font-size: 1.75vw;
+      font-size: 26px;
     }
   }
   .ops-login-right {
